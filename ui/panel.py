@@ -149,10 +149,75 @@ def render_save_load(page_key: str) -> Household:
     return h
 
 
+COMPACT_CSS = """
+<style>
+  /* Streamlit's defaults are generous with vertical space. On a page that is
+     mostly dense numeric input, that generosity turns into scrolling. */
+  .block-container {padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1400px;}
+  .block-container h1 {font-size: 1.9rem; margin-bottom: .15rem;}
+  .block-container h2 {font-size: 1.3rem; margin: .55rem 0 .3rem;}
+  .block-container h3 {font-size: 1.08rem; margin: .4rem 0 .25rem;}
+  .block-container h4 {font-size: .95rem; margin: .2rem 0 .35rem;
+                       text-transform: uppercase; letter-spacing: .04em;
+                       color: #5a6b73;}
+  div[data-testid="stVerticalBlockBorderWrapper"] {
+      background: #fbfcfc; border-radius: 8px;}
+  div[data-testid="stVerticalBlock"] {gap: .45rem;}
+  div[data-testid="stHorizontalBlock"] {gap: .7rem;}
+  div[data-testid="stMetric"] {padding: .1rem 0;}
+  div[data-testid="stMetricValue"] {font-size: 1.35rem;}
+  div[data-testid="stMetricLabel"] p {font-size: .78rem; color: #5a6b73;}
+  hr {margin: .7rem 0;}
+  div[data-testid="stCaptionContainer"] p {font-size: .8rem; line-height: 1.35;}
+  .stAlert {padding: .55rem .8rem;}
+  .stAlert p {margin-bottom: .25rem;}
+</style>
+"""
+
+
 def page_header(title: str, subtitle: str = "") -> None:
+    st.markdown(COMPACT_CSS, unsafe_allow_html=True)
     st.title(title)
     if subtitle:
         st.caption(subtitle)
+
+
+class section:
+    """
+    A bordered, titled panel.
+
+    Used as a context manager so a page reads as a set of distinct boxes rather
+    than one long scroll:
+
+        with section("Basic pay"):
+            ...
+    """
+
+    def __init__(self, title: str = "", caption: str = ""):
+        self.title, self.caption = title, caption
+        self._ctx = None
+
+    def __enter__(self):
+        self._ctx = st.container(border=True)
+        self._ctx.__enter__()
+        if self.title:
+            st.markdown(f"#### {self.title}")
+        if self.caption:
+            st.caption(self.caption)
+        return self
+
+    def __exit__(self, *exc):
+        return self._ctx.__exit__(*exc)
+
+
+def metric_row(items, columns: int = 0):
+    """A compact row of metrics from (label, value) or (label, value, delta)."""
+    if not items:
+        return
+    cols = st.columns(columns or len(items))
+    for col, item in zip(cols, items):
+        label, value, *rest = item
+        col.metric(label, value, rest[0] if rest else None)
 
 
 # --------------------------------------------------------------------------

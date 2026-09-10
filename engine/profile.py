@@ -14,6 +14,7 @@ from typing import Any, get_type_hints
 import json
 
 from engine.debt.payoff import Debt
+from engine.income.spouse import SpouseIncome
 
 # --------------------------------------------------------------------------
 # Component
@@ -191,6 +192,11 @@ class Household:
     has_spouse: bool = False
     n_dependents: int = 0
 
+    # Spouse earnings are modelled separately from the service member's, because
+    # a military spouse's career is interrupted by every PCS rather than
+    # continuous. See engine/income/spouse.py.
+    spouse_income: SpouseIncome = field(default_factory=SpouseIncome)
+
     state_of_legal_residence: str = "Texas"
     current_state: str = "Texas"
 
@@ -256,6 +262,9 @@ def _build(cls, data: Any):
             continue
         if f.name == "spouse":
             kwargs[f.name] = _build(ServiceMember, value) if isinstance(value, dict) else None
+            continue
+        if f.name == "spouse_income" and isinstance(value, dict):
+            kwargs[f.name] = _build(SpouseIncome, value)
             continue
         if is_dataclass(ftype) and isinstance(value, dict):
             kwargs[f.name] = _build(ftype, value)
