@@ -27,6 +27,7 @@ def _page(path, title, icon, default=False):
 MENU = {
     "Where I stand": [
         _page("pages/0_Overview.py", "Overview", "🎖️", default=True),
+        _page("pages/12_Upload_LES.py", "Read my LES or RAS", "📄"),
         _page("pages/1_Profile.py", "Who I am", "👤"),
         _page("pages/2_Pay.py", "What I actually get paid", "💵"),
         _page("pages/4_Assets_and_Debts.py", "What I am worth", "🏦"),
@@ -51,4 +52,6 @@ MENU = {
     ],
 }
 
-st.navigation(MENU).run()
+# expanded=True: past ten pages Streamlit folds the tail of the menu behind a
+# "View N more" button, and the group it hides is the one retirees need.
+st.navigation(MENU, expanded=True).run()
