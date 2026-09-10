@@ -4,12 +4,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import streamlit as st
 import pandas as pd
 
-from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
-                      section, metric_row, money, integer, number, toggle,
-                      choice, fmt_money, fmt_pct, esc, md_money)
+from ui.panel import (wkey, get_household, page_header, two_pane, input_card, section, metric_row, money, integer, number, toggle, choice, fmt_money, fmt_pct, esc, md_money)
 from engine.tax import domicile as D
 from engine.benefits import gi_bill as GI
 from engine.pay import bah as BAH
+from engine.pay import taxable as TX
 
 h = get_household()
 m = h.member
@@ -32,15 +31,21 @@ with inputs:
                            index=D.STATE_NAMES.index("Texas"), key=wkey("altstate"))
 
     with input_card("What you earn, and for how long"):
-        taxable_pay = st.number_input("What is your TAXABLE military pay, per year?",
-                                      value=float(m.basic_pay_monthly_override * 12
-                                                  or 60_000.0),
-                                      min_value=0.0, step=1000.0, format="%.0f",
-                                      key=wkey("taxpay"),
-                                      help="Basic pay and taxable special pays. "
-                                           "NOT BAH or BAS — those are outside "
-                                           "state income tax too.")
-        ad_years = st.number_input("How many years will you serve?", value=20.0,
+        # Derived, not typed: the Pay page already knows this number.
+        tp = TX.compute(m)
+        taxable_pay = tp.annual
+        annual_retired = TX.annual_retired_pay(m)
+        st.markdown(esc(f"**Taxable military pay: {fmt_money(taxable_pay)} a year**"))
+        st.caption(esc(tp.describe())
+                   + (" Change any of these on **What I actually get paid**."
+                      if tp.serving else ""))
+        for note in tp.notes:
+            st.warning(esc(note), icon="⚠️")
+        if not m.is_serving and annual_retired <= 0:
+            st.warning("Retired pay is not entered. Add it on **Who I am** so "
+                       "the retirement years can be compared.", icon="⚠️")
+        ad_years = st.number_input("How many years will you serve?",
+                                   value=20.0 if m.is_serving else 0.0,
                                    min_value=0.0, max_value=42.0, step=1.0,
                                    key=wkey("adyrs"))
         ret_years = st.number_input("How many years will you draw retired pay?", value=30.0,
@@ -79,11 +84,11 @@ with inputs:
 # The maths, once the answers are in.
 # ==========================================================================
 comp = D.compare_states(slr, alt, taxable_pay,
-                        m.retired_pay_monthly * 12 or 87_000.0,
+                        annual_retired,
                         ad_years, ret_years,
                         annual_va_compensation=m.va_disability_monthly * 12)
 
-ranked = D.rank_states(taxable_pay, m.retired_pay_monthly * 12 or 87_000.0,
+ranked = D.rank_states(taxable_pay, annual_retired,
                        ad_years, ret_years, spouse_income=sp_inc,
                        spouse_years=ad_years)
 

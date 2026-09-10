@@ -126,6 +126,9 @@ class ServiceMember:
     bas_monthly_override: float = 0.0
     special_pay_monthly: float = 0.0
     special_pay_taxable: bool = True
+    # Enlistment, re-enlistment, retention and career-field bonuses, as a
+    # lump sum for the year. Taxable unless paid in a combat zone.
+    bonus_annual_taxable: float = 0.0
 
     # Deployment
     is_deployed: bool = False

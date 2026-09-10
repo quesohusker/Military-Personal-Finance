@@ -7,6 +7,7 @@ import pandas as pd
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, money, toggle, fmt_money, fmt_pct,
                       esc, md_money)
+from engine.pay import taxable as TX
 from engine.pay import grades as G, bah as BAH, bas as BAS, basepay as BP
 from engine.pay import bah_nonlocality as NL
 from engine.profile import GUARD, RESERVE
@@ -74,6 +75,13 @@ with inputs:
                    "retired pay.")
         toggle("Are your special pays taxable?", m, "special_pay_taxable",
                key=wkey("spaytax"))
+        money("What bonuses will you receive this year?", m,
+              "bonus_annual_taxable", key=wkey("bonus"), step=500.0,
+              help="Enlistment, re-enlistment, retention or career-field "
+                   "bonuses, as a lump sum for the year. Ordinary taxable "
+                   "income — unless it is paid while you are in a combat zone, "
+                   "in which case it is excluded entirely. That is why people "
+                   "time re-enlistment to a deployment.")
 
 # ==========================================================================
 # What those answers add up to.
@@ -157,7 +165,7 @@ with results:
     with section("Total compensation"):
         metric_row([
             ("Taxable", f"{fmt_money(taxable)}/mo",
-             f"{fmt_money(taxable * 12)}/yr"),
+             f"{fmt_money(TX.compute(m).annual)}/yr"),
             ("Non-taxable", f"{fmt_money(nontaxable)}/mo",
              f"{fmt_money(nontaxable * 12)}/yr"),
             ("Total", f"{fmt_money(total)}/mo", f"{fmt_money(total * 12)}/yr"),
