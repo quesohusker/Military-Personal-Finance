@@ -38,13 +38,59 @@ def _pick(names: list[str], *fragments: str) -> str | None:
     return None
 
 
-def fetch(year: int) -> bytes:
+# DoD web servers reject requests that do not look like a browser. A bare
+# library User-Agent gets a 403, not a 404 -- the file is there, the request is
+# refused. Send a full browser header set.
+BROWSER_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 "
+                   "Safari/537.36"),
+    "Accept": "application/zip,application/octet-stream,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": ("https://www.travel.dod.mil/Allowances/"
+                "Basic-Allowance-for-Housing/BAH-Rate-Lookup/"),
+}
+
+
+def fetch(year: int, url: str = "") -> bytes:
+    import urllib.error
     import urllib.request
-    url = bah.BAH_SOURCE_URL.format(year=year)
-    print(f"  Downloading {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "military-personal-finance/1.0"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read()
+
+    target = url or bah.BAH_SOURCE_URL.format(year=year)
+    print(f"  Downloading {target}")
+    req = urllib.request.Request(target, headers=BROWSER_HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        raise SystemExit(_http_help(e.code, target, year)) from e
+
+
+def _http_help(code: int, url: str, year: int) -> str:
+    """Turn an HTTP status into something actionable."""
+    if code == 403:
+        return (
+            f"\nHTTP 403 Forbidden for:\n  {url}\n\n"
+            f"The file exists but the server refused the request. This is a bot\n"
+            f"filter, not a missing file. Download it in a browser and hand the\n"
+            f"script the local copy -- that always works:\n\n"
+            f"  1. Open this in your browser:\n     {url}\n"
+            f"  2. Then run:\n"
+            f"     python scripts/refresh_bah.py --file ~/Downloads/BAH-ASCII-{year}.zip\n\n"
+            f"If the browser download also fails, the whole BAH page is here:\n"
+            f"  https://www.travel.dod.mil/Allowances/Basic-Allowance-for-Housing/\n"
+            f"Find the ASCII archive, download it, and pass it with --file."
+        )
+    if code == 404:
+        return (
+            f"\nHTTP 404 for:\n  {url}\n\n"
+            f"That year is not published at this path. Try:\n"
+            f"  python scripts/refresh_bah.py --year {year - 1}\n\n"
+            f"Or pass the archive URL directly if DTMO moved it:\n"
+            f"  python scripts/refresh_bah.py --url <url>"
+        )
+    return (f"\nHTTP {code} for:\n  {url}\n\n"
+            f"Download it in a browser and use --file, or pass --url.")
 
 
 def build(year: int, blob: bytes) -> bah.BAHData:
@@ -150,6 +196,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--year", type=int, default=dt.date.today().year)
+    ap.add_argument("--file", type=str, default="",
+                    help="Use an archive already downloaded to disk instead of "
+                         "fetching it. Use this if the download is blocked.")
+    ap.add_argument("--url", type=str, default="",
+                    help="Download from this URL instead of the built-in one.")
     ap.add_argument("--check", action="store_true",
                     help="Report installed data without downloading.")
     ap.add_argument("--force", action="store_true",
@@ -169,17 +220,32 @@ def main() -> int:
         return 0
 
     print(f"Refreshing BAH rates for {args.year}")
-    try:
-        blob = fetch(args.year)
-    except Exception as e:  # noqa: BLE001 - report any network/HTTP failure plainly
-        print(f"\nDownload failed: {e}", file=sys.stderr)
-        print(f"\nIf {args.year} rates are not published yet, try --year {args.year - 1}.\n"
-              f"If the URL 404s, DTMO may have moved the file. Check:\n"
-              f"  https://www.travel.dod.mil/Allowances/Basic-Allowance-for-Housing/",
-              file=sys.stderr)
-        return 1
 
-    print(f"  Downloaded {len(blob):,} bytes")
+    if args.file:
+        path = Path(args.file).expanduser()
+        if not path.exists():
+            print(f"No such file: {path}", file=sys.stderr)
+            return 1
+        blob = path.read_bytes()
+        print(f"  Read {len(blob):,} bytes from {path}")
+    else:
+        try:
+            blob = fetch(args.year, args.url)
+        except SystemExit:
+            raise
+        except Exception as e:  # noqa: BLE001 - any network failure, reported plainly
+            print(f"\nDownload failed: {e}\n\n"
+                  f"Download the archive in a browser and pass it directly:\n"
+                  f"  python scripts/refresh_bah.py --file ~/Downloads/BAH-ASCII-{args.year}.zip",
+                  file=sys.stderr)
+            return 1
+        print(f"  Downloaded {len(blob):,} bytes")
+
+    if not blob[:2] == b"PK":
+        print("\nThat file is not a zip archive. If you downloaded it in a "
+              "browser, check you saved the ASCII .zip and not an HTML error "
+              "page.", file=sys.stderr)
+        return 1
     data = build(args.year, blob)
 
     problems = sanity_check(data)
