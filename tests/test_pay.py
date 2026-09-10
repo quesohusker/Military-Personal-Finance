@@ -105,11 +105,19 @@ def _rate_line(mha: str, base: float) -> str:
 
 
 FIXTURE_ZIPMHA = "78234 TX290\n22060 VA337\n96818 HI001\n"
-FIXTURE_NAMES = "TX290,San Antonio TX\nVA337,Fort Belvoir VA\nHI001,Honolulu HI\n"
+# Semicolon-delimited, as DTMO actually ships it -- the names contain commas.
+FIXTURE_NAMES = "TX290;SAN ANTONIO, TX\nVA337;FORT BELVOIR, VA\nHI001;HONOLULU COUNTY, HI\n"
 FIXTURE_WITH = "\n".join([_rate_line("TX290", 1500), _rate_line("VA337", 2200),
                           _rate_line("HI001", 2800)])
 FIXTURE_WITHOUT = "\n".join([_rate_line("TX290", 1200), _rate_line("VA337", 1800),
                              _rate_line("HI001", 2400)])
+
+
+def test_parse_mha_names_keeps_commas_inside_the_name():
+    """The delimiter is a semicolon precisely because names contain commas."""
+    parsed = bah.parse_mha_names("AK400;KETCHIKAN, AK\nTX290;SAN ANTONIO, TX\n")
+    assert parsed["AK400"] == "KETCHIKAN, AK"
+    assert parsed["TX290"] == "SAN ANTONIO, TX"
 
 
 def test_parse_zip_mha_pads_short_zips():
@@ -175,7 +183,7 @@ def test_lookup_resolves_zip_to_mha_and_rate(data):
     r = bah.lookup("78234", "E-5", True, data)
     assert r.found
     assert r.mha == "TX290"
-    assert r.mha_name == "San Antonio TX"
+    assert r.mha_name == "SAN ANTONIO, TX"
     assert r.monthly == 1500 + 40 * 4      # E05 is the 5th column
     assert r.annual == r.monthly * 12
 
@@ -370,3 +378,79 @@ def test_real_data_every_mha_carries_all_27_grades():
     expected = set(bah.BAH_COLUMN_ORDER)
     for mha, row in d.with_dependents.items():
         assert set(row) == expected, mha
+
+
+# ==========================================================================
+# Non-locality BAH: Partial, RC/Transit, Differential
+# ==========================================================================
+
+from engine.pay import bah_nonlocality as nl  # noqa: E402
+
+
+def test_nonlocality_covers_every_pay_grade():
+    assert set(nl.NONLOCALITY_RATES) == {g.code for g in G.GRADES}
+
+
+def test_nonlocality_rows_all_have_four_rates():
+    for code, row in nl.NONLOCALITY_RATES.items():
+        assert len(row) == 4, code
+        assert all(isinstance(v, (int, float)) and v > 0 for v in row), code
+
+
+def test_partial_is_tiny_and_rc_transit_is_not():
+    """Partial is pocket change; RC/T is a real housing allowance."""
+    for grade in ("E-1", "E-5", "O-3", "O-6"):
+        assert nl.partial(grade).monthly < 100
+        assert nl.rc_transit(grade, False).monthly > 500
+
+
+def test_rc_transit_pays_more_with_dependents():
+    for grade in ("E-1", "E-5", "W-3", "O-3", "O-3E", "O-10"):
+        assert (nl.rc_transit(grade, True).monthly
+                > nl.rc_transit(grade, False).monthly)
+
+
+def test_prior_enlisted_officers_get_more_rc_transit():
+    """Same relationship the locality table shows -- a check on transcription."""
+    for base, prior in (("O-1", "O-1E"), ("O-2", "O-2E"), ("O-3", "O-3E")):
+        assert nl.rc_transit(prior, True).monthly > nl.rc_transit(base, True).monthly
+        assert nl.rc_transit(prior, False).monthly > nl.rc_transit(base, False).monthly
+
+
+def test_rc_transit_rises_with_seniority_within_each_category():
+    enlisted = ["E-1", "E-2", "E-3", "E-4", "E-5", "E-6", "E-7", "E-8", "E-9"]
+    rates = [nl.rc_transit(g, True).monthly for g in enlisted]
+    assert rates == sorted(rates), "enlisted RC/T should be non-decreasing"
+
+    officer = ["O-1", "O-2", "O-3", "O-4", "O-5", "O-6"]
+    rates = [nl.rc_transit(g, True).monthly for g in officer]
+    assert rates == sorted(rates)
+
+
+def test_general_officer_grades_share_one_rate():
+    """O-7 through O-10 are flat, as in the locality table."""
+    flag = [nl.rc_transit(g, True).monthly for g in ("O-7", "O-8", "O-9", "O-10")]
+    assert len(set(flag)) == 1
+
+
+def test_unknown_grade_is_reported_not_raised():
+    r = nl.partial("E-99")
+    assert not r.found
+    assert "grade" in r.note.lower()
+
+
+def test_rc_transit_note_warns_about_the_30_day_threshold():
+    """Orders over 30 days pay locality BAH, which is usually far higher."""
+    note = nl.rc_transit("E-5", False).note
+    assert "30 days" in note
+
+
+def test_partial_note_says_the_rate_does_not_inflate():
+    """A forward projection must not grow this one."""
+    assert "not rise" in nl.partial("E-5").note
+
+
+def test_all_rates_returns_every_variant():
+    d = nl.all_rates("E-6")
+    assert len(d) == 4
+    assert all(r.found for r in d.values())
