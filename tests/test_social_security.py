@@ -496,7 +496,7 @@ def _body(at) -> str:
 
 def test_the_page_renders_with_an_empty_plan():
     at = _render()
-    assert at.title[0].value == "🧓 When do I claim Social Security?"
+    assert at.title[0].value == "🧓 Social Security"
     assert "ssa.gov" in _body(at)
 
 
@@ -504,7 +504,7 @@ def test_the_page_renders_with_an_empty_plan():
 def test_the_page_renders_against_both_sample_plans(name):
     at = _render(name)
     body = _body(at)
-    assert at.title[0].value == "🧓 When do I claim Social Security?"
+    assert at.title[0].value == "🧓 Social Security"
     # It tells the user where the real number comes from.
     assert "ssa.gov/myaccount" in body
     # The 62-to-70 table and the cumulative chart.

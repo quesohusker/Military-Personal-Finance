@@ -13,7 +13,7 @@ from engine.coach import prime_directive as PD
 
 h = get_household()
 m = h.member
-page_header("⚕️ If I am medically separated",
+page_header("⚕️ Medical Separation",
             "The disability evaluation outcome, and what to do about life "
             "insurance before you separate rather than after.")
 

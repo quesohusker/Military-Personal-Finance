@@ -24,7 +24,7 @@ DISCOUNT_HELP = (
 
 h = get_household()
 m = h.member
-page_header("🏦 What I am worth",
+page_header("🏦 Accounts",
             "Your balance sheet — including the asset most planning tools leave "
             "off entirely.")
 
@@ -163,8 +163,7 @@ with results:
                    "Roth TSP still accumulates a traditional balance from the "
                    "match.")
         st.caption("Debts entered in the table above flow into this balance "
-                   "sheet; the **Getting out of debt** page works from the "
-                   "same list.")
+                   "sheet; the **Debt Payoff** page works from the same list.")
 
     # ----------------------------------------------------------------------
     if bs.streams:

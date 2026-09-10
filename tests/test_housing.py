@@ -405,7 +405,7 @@ def _body(at) -> str:
 
 def test_page_renders_from_an_empty_plan():
     at = _render()
-    assert "Buy, rent, or keep the house?" in at.title[0].value
+    assert "Housing & VA Loan" in at.title[0].value
     body = _body(at)
     assert "funding fee" in body.lower()
 

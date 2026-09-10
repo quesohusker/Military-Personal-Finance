@@ -12,7 +12,7 @@ from engine.pay import taxable as TX
 
 h = get_household()
 m = h.member
-page_header("🗺️ My home state, and the GI Bill",
+page_header("🗺️ Residency & GI Bill",
             "Where you pay state tax, and what your GI Bill is worth.")
 
 inputs, results = two_pane()
@@ -36,7 +36,7 @@ with inputs:
                            index=D.STATE_NAMES.index(alt_default),
                            key=wkey("altstate"),
                            help="Defaults to the state you live in now, from "
-                                "Who I am.")
+                                "Profile.")
 
     with input_card("What you earn, and for how long"):
         # Derived, not typed: the Pay page already knows this number.
@@ -45,12 +45,12 @@ with inputs:
         annual_retired = TX.annual_retired_pay(m)
         st.markdown(esc(f"**Taxable military pay: {fmt_money(taxable_pay)} a year**"))
         st.caption(esc(tp.describe())
-                   + (" Change any of these on **What I actually get paid**."
+                   + (" Change any of these on **Income**."
                       if tp.serving else ""))
         for note in tp.notes:
             st.warning(esc(note), icon="⚠️")
         if not m.is_serving and annual_retired <= 0:
-            st.warning("Retired pay is not entered. Add it on **Who I am** so "
+            st.warning("Retired pay is not entered. Add it on **Profile** so "
                        "the retirement years can be compared.", icon="⚠️")
         ad_years = st.number_input("How many years will you serve?",
                                    value=20.0 if m.is_serving else 0.0,

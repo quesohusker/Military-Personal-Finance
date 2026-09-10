@@ -19,7 +19,7 @@ h = get_household()
 a = h.assumptions
 m = h.member
 
-page_header("🎛️ What should we assume?",
+page_header("🎛️ Assumptions",
             "Every projection in the app leans on the same handful of rates. "
             "Set them once here, and read what each one means, what it does "
             "not mean, and which pages it moves.")

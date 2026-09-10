@@ -19,10 +19,10 @@ from engine.ingest import statements as S
 
 h = get_household()
 
-page_header("🏦 Read a bank or brokerage statement",
-            "Pull the closing balances off a statement you already have, instead "
-            "of reading them off the page and typing them in. Nothing changes "
-            "until you press Apply.")
+page_header("📥 Import Accounts",
+            "Pull the closing balances off a bank or brokerage statement you "
+            "already have, instead of reading them off the page and typing them "
+            "in. Nothing changes until you press Apply.")
 
 RESULT_KEY = wkey("stmt_result")      # a ParseResult; masked lines only
 SOURCE_KEY = wkey("stmt_source")      # fingerprint of what was parsed
@@ -160,7 +160,7 @@ with results:
             st.markdown(
                 "A scanned PDF has no text to read — paste the figures instead. "
                 "A statement that uses other words for its closing balance will "
-                "not match; type the balance on the **What I am worth** page.")
+                "not match; type the balance on the **Accounts** page.")
 
     else:
         with section("What was read"):

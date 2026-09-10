@@ -37,7 +37,7 @@ age_now = max(0, d.start_year - m.birth_year)
 LAST_YEAR = int(d.start_year + RB.MAX_HORIZON_YEARS)
 OLDEST = int(RB.MAX_PLANNING_AGE)
 
-page_header("🔁 Should I convert to Roth?",
+page_header("🔁 Roth Conversions",
             "Two futures on the same assumptions — one where you convert part of "
             "the traditional balance each year and pay the tax now, one where you "
             "leave it alone and let the RMDs arrive — compared on lifetime tax and "
@@ -182,7 +182,7 @@ with inputs:
                                            min_value=0.0, step=1_000.0, format="%.0f",
                                            key=wkey("rc_spwages"),
                                            help="Read from the spouse income on the "
-                                                "Promotions and PCS page.")
+                                                "Career page.")
             spouse_work_through = st.number_input(
                 "What is the last year your spouse will earn wages?",
                 value=int(d.spouse_work_through_year), min_value=int(d.start_year - 1),
@@ -360,12 +360,12 @@ with results:
         if p.state and not RB.state_is_known(p.state):
             st.warning(esc(f"'{p.state}' is not in the state tax table, so state tax "
                            f"is modelled as zero. Set the state of legal residence "
-                           f"to a full state name on the Who I am page."), icon="⚠️")
+                           f"to a full state name on the Profile page."), icon="⚠️")
 
         if trad_total <= 0 and conv.lifetime_conversions <= 0:
             st.info("There is no traditional balance to convert, so the two futures "
                     "are identical. Enter your traditional TSP or IRA balance on the "
-                    "What I am worth page, or read a statement in.", icon="ℹ️")
+                    "Accounts page, or read a statement in.", icon="ℹ️")
         elif c.converting_wins:
             st.success(
                 f"**Converting leaves {md_money(c.legacy_gain)} more after every tax "

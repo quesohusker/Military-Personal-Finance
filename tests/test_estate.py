@@ -356,7 +356,7 @@ def test_the_survivors_page_is_pointed_at_rather_than_restated():
     h = _household(tsp_traditional=10_000.0)
     h.member.sbp_elected = True
     out = EP.findings(h, 0.24)
-    assert "Survivors, SBP and the VA page" in " ".join(f.detail for f in out)
+    assert "Survivor Benefits page" in " ".join(f.detail for f in out)
     assert "not part of your estate" in " ".join(f.headline for f in out)
 
 
@@ -417,7 +417,7 @@ def _render(household: Household | None = None):
 
 def test_the_page_renders_from_a_blank_plan():
     at = _render()
-    assert "Who gets what" in at.title[0].value
+    assert "Estate" in at.title[0].value
     body = " ".join(md.value for md in at.markdown)
     assert "beneficiary" in body.lower()
 

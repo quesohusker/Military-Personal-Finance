@@ -595,7 +595,7 @@ def body(at) -> str:
                          ids=["blank", "e5", "retired_o5"])
 def test_the_page_renders(sample):
     at = render(sample)
-    assert at.title[0].value == "🏥 What will healthcare cost me?"
+    assert at.title[0].value == "🏥 Healthcare"
     assert at.metric, "the page shows what it costs"
     labels = [m.label for m in at.metric]
     assert "Lifetime cost, today's dollars" in labels

@@ -102,7 +102,7 @@ REDUX_REAL_DRIFT = -0.01
 # member and a generous planning margin used to hand st.number_input a death
 # age of 114 and take the whole page down. So the bounds live here, next to
 # the defaults that have to satisfy them, and the page imports them.
-MIN_BIRTH_YEAR, MAX_BIRTH_YEAR = 1930, 2010   # matches the Who I am page
+MIN_BIRTH_YEAR, MAX_BIRTH_YEAR = 1930, 2010   # matches the Profile page
 MAX_PLANNING_AGE = 110
 MAX_HORIZON_YEARS = 60            # how far past the start year a year input goes
 MAX_BENEFICIARIES = 20

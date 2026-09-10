@@ -68,7 +68,7 @@ class TaxablePay:
     def describe(self) -> str:
         if not self.serving:
             return ("No military pay: you are not serving. The comparison "
-                    "runs on the retired pay entered on Who I am.")
+                    "runs on the retired pay entered on the Profile page.")
         parts = [f"{label}: ${amt:,.0f}" for label, amt in self.lines()]
         return (" + ".join(parts)
                 + f" = ${self.annual:,.0f} a year, before any combat-zone "

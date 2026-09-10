@@ -1,5 +1,5 @@
 """
-Read my LES or RAS — upload the statement instead of retyping it.
+Import Pay Statement — upload the LES or RAS instead of retyping it.
 
 Nothing on this page writes into the profile until the user presses the button.
 The parser was written without a real LES in front of it (see
@@ -8,9 +8,9 @@ value, the line of text it came from, and how sure it is. Anything it is not
 sure of is shown unticked.
 
 TO PUT THIS PAGE IN THE MENU, add one line to the MENU dict in
-Military_Finance.py, under "Where I stand":
+Military_Finance.py, under "General":
 
-    _page("pages/12_Upload_LES.py", "Read my LES or RAS", "📄"),
+    _page("pages/12_Upload_LES.py", "Import Pay Statement", "📄"),
 
 st.navigation only routes the pages it is handed, so until that line exists
 this page is reachable only by running it directly.
@@ -28,8 +28,8 @@ from engine.pay import basepay as BP
 
 h = get_household()
 
-page_header("📄 Read my LES or RAS",
-            "Upload the statement and let the app read the figures off it, "
+page_header("📄 Import Pay Statement",
+            "Upload your LES or RAS and let the app read the figures off it, "
             "rather than copying them across by hand. Nothing is applied until "
             "you say so.")
 

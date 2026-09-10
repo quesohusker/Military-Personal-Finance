@@ -17,7 +17,7 @@ h = get_household()
 m = h.member
 bah_data = BAH.load()
 
-page_header("📈 Promotions and PCS moves",
+page_header("📈 Career",
             "Promotions and moves on one line. Pay steps at longevity "
             "boundaries and jumps on orders — it does not grow on a curve.")
 

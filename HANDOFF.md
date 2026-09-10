@@ -69,12 +69,29 @@ with results:
 
 ## Menu structure
 
-Organised around **decisions a member has to make and events they will meet**,
-not around features. Nobody wakes up wanting to visit a "benefits module";
-they wake up with orders in hand or a medical board convening.
+Organised around **who a page is for**. Most of personal finance does not care
+whether you are in uniform, so `General` holds the pages everyone uses and the
+three status groups hold only what is genuinely particular to that status.
 
-`Where I stand` · `Decisions I make now` · `When I get orders` ·
-`When I deploy` · `When I leave the service`
+`General` · `Currently Serving` · `Veteran` · `Retiree`
+
+**Titles are nouns.** The title says the subject, the subtitle says the
+question — a sidebar of full sentences is slow to scan, and the eye should
+land rather than read. This does not touch the label rule above: widget labels
+are inputs and stay second-person questions.
+
+The earlier menu grouped by event — `Where I stand`, `Decisions I make now`,
+`When I get orders` — on the argument that nobody wakes up wanting a "benefits
+module". That rationale is superseded. `docs/REORGANIZATION.md` has the full
+reasoning, the old-to-new title map, the filing rule for a page that fits two
+groups, and the recorded objection that status groups overlap and `General`
+ends up holding 13 of the 23 pages.
+
+Titles are not confined to the router: they appear as prose cross-references
+in about forty places, and a missed one is silent — nothing crashes, the user
+is just sent to a page name that is not in the sidebar. Sweep a rename by
+grepping the exact old title, never a fragment; "money invested" and "keep the
+house" also occur as ordinary prose.
 
 `st.navigation(MENU, expanded=True)` — past ten pages Streamlit folds the tail
 behind a "View 3 more" button, and the group it hid was the retiree one.

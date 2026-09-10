@@ -72,7 +72,7 @@ st.subheader("Start here")
 c1, c2, c3 = st.columns(3)
 with c1:
     st.markdown("**Start from scratch**")
-    st.caption("A blank plan. Work down the menu from 'Who I am'.")
+    st.caption("A blank plan. Work down the menu from 'Profile'.")
     if st.button("New blank plan", use_container_width=True):
         set_household(Household()); st.rerun()
 with c2:

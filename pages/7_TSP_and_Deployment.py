@@ -14,8 +14,8 @@ from engine.profile import SYS_BRS, has_tsp_match
 
 h = get_household()
 m = h.member
-page_header("🪖 Combat-zone pay and the TSP",
-            "Contribution limits, the match, and what a combat zone opens up.")
+page_header("🪖 Deployment",
+            "TSP contribution limits, the match, and what a combat zone opens up.")
 
 # --------------------------------------------------------------------------
 # Standing facts from the profile — not answers given on this page.

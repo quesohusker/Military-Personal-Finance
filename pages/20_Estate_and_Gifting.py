@@ -18,7 +18,7 @@ PLANNED = "What you are gifting now"
 h = get_household()
 e = h.estate
 
-page_header("🧾 Who gets what, and when",
+page_header("🎁 Estate",
             "A beneficiary designation beats a will every time. Most of what "
             "you own never reaches the will at all — so the form on file at "
             "the TSP matters more than the document in the safe.")
@@ -195,9 +195,9 @@ with results:
                 f"traditional money to Roth would hand your heirs "
                 f"{fmt_money(comp.gap_if_converted)} more, before counting "
                 f"what you would pay in tax to do it. That is the estate "
-                f"argument for conversions — the Should I convert to Roth? "
-                f"page weighs it against your own lifetime tax bill, which is "
-                f"the other half of the decision."), icon="⚠️")
+                f"argument for conversions — the Roth Conversions page "
+                f"weighs it against your own lifetime tax bill, which is the "
+                f"other half of the decision."), icon="⚠️")
 
         for n in comp.notes:
             st.markdown("- " + esc(n))

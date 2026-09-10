@@ -16,7 +16,7 @@ from engine import mortality as MORT
 h = get_household()
 m = h.member
 
-page_header("👤 Who I am",
+page_header("👤 Profile",
             "The DIEMS date matters more than anything else here — it decides "
             "your retirement system, which decides whether a TSP match exists "
             "at all.")

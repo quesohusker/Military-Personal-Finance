@@ -18,7 +18,7 @@ from engine.benefits import life_insurance as LI
 h = get_household()
 m = h.member
 
-page_header("🚪 Leaving the service",
+page_header("🚪 Transition",
             "The ordinary exit — an ETS date or a retirement ceremony, with "
             "nothing going wrong. Money still leaks out of it in five places: "
             "the leave balance, the gap between the last pay and the first "
@@ -248,8 +248,8 @@ with results:
         else:
             st.info("No pay figures could be resolved for your grade, so there "
                     "is nothing to chart. Check your grade and years of "
-                    "service on Who I am, or enter basic pay from your LES on "
-                    "What I actually get paid.")
+                    "service on Profile, or enter basic pay from your LES on "
+                    "Income.")
 
         for note in flow.notes:
             st.markdown(esc(note))
@@ -299,7 +299,7 @@ with results:
                 f"Retired pay is modelled at {fmt_money(t.retired_pay_monthly)} "
                 f"a month"
                 + (", estimated from your multiplier because none is entered on "
-                   "Who I am." if t.retired_pay_is_estimate else ".")))
+                   "Profile." if t.retired_pay_is_estimate else ".")))
         st.caption(esc(
             f"SGLI runs free for {LI.SGLI_FREE_DAYS_AFTER_SEPARATION} days after "
             f"you separate, VGLI is guaranteed-issue for "

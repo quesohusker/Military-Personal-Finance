@@ -15,7 +15,7 @@ from engine.profile import GUARD, RESERVE
 h = get_household()
 m = h.member
 
-page_header("💵 What I actually get paid",
+page_header("💵 Income",
             "What you actually earn, split into what is taxed and what is not. "
             "That split is the biggest structural difference between military "
             "and civilian compensation.")
@@ -201,7 +201,7 @@ with results:
                 f"somewhere cheaper.", icon="💡")
 
         if m.in_combat_zone:
-            st.info("**In a combat zone this changes again.** See the TSP & "
+            st.info("**In a combat zone this changes again.** See the "
                     "Deployment page — enlisted members and warrant officers "
                     "exclude all military pay for any month with a day in the "
                     "zone.", icon="🎖️")

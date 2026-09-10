@@ -8,7 +8,7 @@ from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
 from engine.coach import prime_directive as PD
 
 h = get_household()
-page_header("🧭 What to do with my next dollar",
+page_header("🧭 Next Dollar",
             "Where your next dollar should go, in order, for your situation "
             "specifically — not a generic checklist.")
 

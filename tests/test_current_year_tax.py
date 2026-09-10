@@ -498,7 +498,7 @@ def body(at) -> str:
 
 def test_the_page_renders_for_a_deployed_e5():
     at = render("e5_6yrs_brs")
-    assert "this year's tax return" in at.title[0].value
+    assert "Taxes" in at.title[0].value
     text = body(at)
     assert "Earned Income Credit" in text
     assert "Saver's Credit" in text
