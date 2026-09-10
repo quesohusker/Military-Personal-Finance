@@ -27,6 +27,11 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 | Part D IRMAA tiers | browser save, ssa.gov | **CONFIRMED / CORRECTED** | 0 / 14.50 / 37.50 / 60.40 / 83.30 / 91.00. `healthcare.py` had these exactly right. `engine/tax/tables.py` was carrying the 2025 amounts (13.70 through 85.80) and is now fixed. |
 | IRMAA MAGI brackets | browser save, ssa.gov | **CONFIRMED** | 109 / 137 / 171 / 205 / 500k single, double that joint except the top at 750k. |
 | IRMAA, married filing separately | browser save, ssa.gov | **RECORDED** | Its own two-step schedule, and its top surcharge is 487.90 rather than the 487.00 every other status pays. Not modelled; recorded so it is not re-derived wrongly. |
+| SSA PIA bend points | browser save, ssa.gov | **CONFIRMED** | $1,286 and $7,749 for 2026, exact. These had been inferred from wage-index growth off the 2025 figures and were the numbers the Social Security page said it would not defend. |
+| BAS rates | browser save, dfas.mil | **CONFIRMED** | Enlisted $476.95, officer $328.48, BAS II $953.90. Settles the direction for good: enlisted BAS is the LARGER of the two. The original brief for this project had them the other way round. |
+| TRICARE reserve premiums | browser save, tricare.mil | **CORRECTED** | TRS $57.88 member / $286.66 family; TRR $645.90 / $1,548.30. All four were carried high, TRS family by $14 a month. |
+| TRICARE enrolment fees | browser save, tricare.mil | **CORRECTED** | Prime Group A $381.96 / $765, Group B $462.96 / $927; Select Group A $186.96 / $375, Group B $594.96 / $1,191. Select Group B had been carried at $199 / $398 -- a third of the real figure. |
+| TRICARE catastrophic caps | browser save, tricare.mil | **CONFIRMED** | $1,000 and $1,324 for active-duty families, $3,000 and $4,635 for retirees -- including the two rated LOW. Select Group A has its own cap of $4,381, which was missing entirely. |
 | TSP L Fund lineup | `tsp_lifecycle_funds` | **CONFIRMED** | L Income and L 2030 through L 2075 in five-year steps. L 2075 was rated LOW confidence on the grounds it might not exist yet. It does. |
 
 ## Source files
@@ -49,23 +54,20 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 
 ## Still unverified
 
-SSA, DFAS and DTMO refuse every automated request. TRICARE returns a
-JavaScript shell. What is left, in the order it changes an answer:
+Everything that changes a number has now been checked. What remains is the
+annual refresh rather than an open question:
 
-1. **The SSA PIA bend points.** Everything the Social Security page estimates
-   for someone without a statement scales directly with these two numbers.
-2. **TRICARE enrolment fees and the catastrophic cap.** The retiree lifetime
-   figure is dominated by Part B, so these move the total by a few percent.
-   Print to PDF -- the page builds itself in JavaScript and Save As returns
-   an empty shell.
-3. **BAS.** Small, but it is in every pay calculation, and the original brief
-   for this project had the enlisted and officer rates backwards.
-4. **DFAS pay tables and the DTMO BAH archive.** Both already installed for
-   2026 from files downloaded by hand earlier, so this is only the annual
-   refresh.
+- **DFAS pay tables** and the **DTMO BAH archive**, both already installed
+  for 2026 from files downloaded by hand in an earlier session. Next year's
+  editions will need the same treatment -- neither host will serve an
+  automated request.
+- **VA disability compensation rates**, fetched but not yet read into the
+  app; the user is asked for their own figure instead.
 
-`python3 scripts/fetch_gov_data.py --manual` prints the list with the saving
-instructions each one needs.
+`python3 scripts/fetch_gov_data.py --manual` still prints the browser-save
+list, and the saving method matters: **Page Source** for SSA and DFAS, whose
+tables are in the markup, and **Print to PDF** for TRICARE, whose page builds
+itself in JavaScript and whose Save As returns an empty shell.
 
 ## What one year of life expectancy was worth
 

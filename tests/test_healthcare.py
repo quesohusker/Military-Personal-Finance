@@ -214,8 +214,14 @@ def test_group_b_pays_more_than_group_a_on_every_fee_and_cap():
             a = HC.enrollment_fee_annual(plan, HC.GROUP_A, family)
             b = HC.enrollment_fee_annual(plan, HC.GROUP_B, family)
             assert b > a > 0
-            assert HC.enrollment_fee_annual(plan, HC.GROUP_A, True) == \
-                2 * HC.enrollment_fee_annual(plan, HC.GROUP_A, False)
+            # Published family fees are NOT exactly twice the individual
+            # one -- Prime Group A is $381.96 against $765, and TRICARE
+            # rounds the family figure to whole dollars. Assert the
+            # relationship, not an arithmetic identity that only held while
+            # the numbers were invented.
+            solo = HC.enrollment_fee_annual(plan, HC.GROUP_A, False)
+            both = HC.enrollment_fee_annual(plan, HC.GROUP_A, True)
+            assert 1.95 * solo <= both <= 2.05 * solo
     assert HC.catastrophic_cap(HC.GROUP_B, True) > HC.catastrophic_cap(HC.GROUP_A, True)
     assert HC.catastrophic_cap(HC.GROUP_A, True) == 3_000.0     # fixed in law
     assert HC.catastrophic_cap(HC.GROUP_A, False) == 1_000.0

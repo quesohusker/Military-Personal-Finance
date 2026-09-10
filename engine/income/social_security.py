@@ -68,6 +68,10 @@ PARAMETER_YEAR = 2026
 
 # PIA formula bend points for a worker first eligible (turning 62) in 2026.
 # 90% of AIME to the first, 32% to the second, 15% above it.
+# CHECKED 2026-09-10 against ssa.gov/oact/COLA/bendpoints.html (browser
+# save; ssa.gov refuses automated requests). The 2026 row is 1,286 and
+# 7,749 -- both exact. These had been inferred from AWI growth off the
+# 2025 figures and rated the least defensible numbers on this page.
 BEND_POINT_1 = 1_286.0
 BEND_POINT_2 = 7_749.0
 PIA_RATES = (0.90, 0.32, 0.15)

@@ -84,19 +84,21 @@ FIGURES = {
     "part_d_base_beneficiary_monthly": 38.99,
 
     # ---- TRICARE Reserve Select / TRICARE Retired Reserve, monthly -----
-    "trs_member_monthly": 63.02,
-    "trs_family_monthly": 301.03,
-    "trr_member_monthly": 683.55,
-    "trr_family_monthly": 1_641.78,
+    "trs_member_monthly": 57.88,
+    "trs_family_monthly": 286.66,
+    "trr_member_monthly": 645.90,
+    "trr_family_monthly": 1_548.30,
 
     # ---- Retiree enrollment fees, annual, by TRICARE group -------------
-    "prime_fee_group_a": {"individual": 382.0, "family": 764.0},
-    "prime_fee_group_b": {"individual": 464.0, "family": 928.0},
-    "select_fee_group_a": {"individual": 188.0, "family": 376.0},
-    "select_fee_group_b": {"individual": 199.0, "family": 398.0},
+    "prime_fee_group_a": {"individual": 381.96, "family": 765.0},
+    "prime_fee_group_b": {"individual": 462.96, "family": 927.0},
+    "select_fee_group_a": {"individual": 186.96, "family": 375.0},
+    "select_fee_group_b": {"individual": 594.96, "family": 1_191.0},
 
     # ---- Catastrophic caps, annual, per family -------------------------
     "cat_cap_retiree_group_a": 3_000.0,
+    # Select Group A has its own cap, distinct from Prime Group A's $3,000.
+    "cat_cap_retiree_select_group_a": 4_381.0,
     "cat_cap_retiree_group_b": 4_635.0,
     "cat_cap_adfm_group_a": 1_000.0,
     "cat_cap_adfm_group_b": 1_324.0,
@@ -155,42 +157,47 @@ VERIFY = {
         "Statutory: 10% of the standard premium for each full 12-month period "
         "without Part B after eligibility, for life. Confidence HIGH.",
     "trs_member_monthly":
-        "VERIFY at tricare.mil/costs: 2026 TRICARE Reserve Select member-only "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "premium. Confidence LOW-MEDIUM (2025 was 54.35; 2026 rose sharply).",
     "trs_family_monthly":
-        "VERIFY at tricare.mil/costs: 2026 TRS member-and-family premium. "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "Confidence LOW-MEDIUM (2025 was 261.99).",
     "trr_member_monthly":
-        "VERIFY at tricare.mil/costs: 2026 TRICARE Retired Reserve member-only "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "premium. Confidence LOW-MEDIUM (2025 was 585.14).",
     "trr_family_monthly":
-        "VERIFY at tricare.mil/costs: 2026 TRR member-and-family premium. "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "Confidence LOW-MEDIUM (2025 was 1,406.22).",
     "prime_fee_group_a":
-        "VERIFY at tricare.mil/costs: 2026 Prime enrollment fee, Group A "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "retirees (DIEMS before 1 Jan 2018). Derived from the 2024 fee of "
         "363/726 indexed by the 2.5% and 2.8% retiree COLAs. Confidence LOW.",
     "prime_fee_group_b":
-        "VERIFY at tricare.mil/costs: 2026 Prime enrollment fee, Group B "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "retirees (DIEMS on or after 1 Jan 2018). Derived from the 2018 fee of "
         "350/700 indexed by retiree COLA (2025: 451/902). Confidence LOW.",
     "select_fee_group_a":
-        "VERIFY at tricare.mil/costs: 2026 Select enrollment fee, Group A "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "retirees. Began at 150/300 in 2021, indexed since. Confidence LOW.",
     "select_fee_group_b":
-        "VERIFY at tricare.mil/costs: 2026 Select enrollment fee, Group B "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "retirees. Began at 150/300 in 2018, indexed since. Confidence LOW.",
     "cat_cap_retiree_group_a":
         "Statutory: Group A retiree catastrophic cap is 3,000 and is NOT "
         "indexed. Confidence HIGH.",
+    "cat_cap_retiree_select_group_a":
+        "CHECKED 2026-09-10 against tricare.mil (browser save; the page "
+        "builds itself in JavaScript, so an automated fetch returns an "
+        "empty shell). Select Group A catastrophic cap, distinct from "
+        "Prime Group A. Confidence HIGH.",
     "cat_cap_retiree_group_b":
-        "VERIFY at tricare.mil/costs: Group B retiree catastrophic cap, 3,500 "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "in 2018 indexed by retiree COLA (2025: 4,509). Confidence LOW-MEDIUM.",
     "cat_cap_adfm_group_a":
         "Statutory: Group A active duty family catastrophic cap, 1,000, not "
         "indexed. Confidence HIGH.",
     "cat_cap_adfm_group_b":
-        "VERIFY at tricare.mil/costs: Group B active duty family cap, 1,000 in "
+        "CHECKED 2026-09-10 against tricare.mil/Costs/HealthPlanCosts (browser save; the page builds itself in JavaScript, so an automated fetch returns an empty shell). "
         "2018 indexed by retiree COLA. Confidence LOW.",
     "tdp_adfm_single_monthly":
         "VERIFY at tricare.mil/dental: TRICARE Dental Program, active duty "

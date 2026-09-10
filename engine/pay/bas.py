@@ -14,6 +14,10 @@ from dataclasses import dataclass
 
 # Monthly rates. Update annually, effective 1 January.
 BAS_RATES = {
+    # CHECKED 2026-09-10 against dfas.mil BAS pay table (browser save).
+    # Exact, and it settles the direction for good: ENLISTED BAS is the
+    # larger of the two. The brief for this project had them the other
+    # way round, and the repo was right to be followed over it.
     2026: {"enlisted": 476.95, "officer": 328.48, "bas_ii": 953.90},
     2025: {"enlisted": 465.77, "officer": 320.78, "bas_ii": 931.54},
 }
