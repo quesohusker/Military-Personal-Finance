@@ -181,7 +181,14 @@ class ServiceMember:
 
     grade: str = "E-5"
     years_of_service: float = 6.0
-    time_in_grade_years: float = 2.0
+
+    # Time in grade, asked two ways. A Date of Rank is a fact off the LES or
+    # the ORB that does not change until the next promotion; a number of years
+    # is right on the day it is typed and quietly wrong on every later day the
+    # plan is opened. So DOR wins when it is set, and the typed number stays
+    # for anyone who does not know theirs. Read them through time_in_grade().
+    date_of_rank: str = ""                    # ISO text, like diems_date
+    time_in_grade_years: float = 2.0          # fallback when there is no DOR
 
     # DIEMS drives the retirement system. Stored as ISO text so the profile
     # stays JSON-native.
@@ -259,6 +266,32 @@ class ServiceMember:
             return date.fromisoformat(self.diems_date)
         except (ValueError, TypeError):
             return None
+
+    @property
+    def dor(self) -> date | None:
+        """Date of Rank, or None if it was never entered or does not parse."""
+        try:
+            return date.fromisoformat(self.date_of_rank)
+        except (ValueError, TypeError):
+            return None
+
+    def time_in_grade(self, as_of: date | None = None) -> float:
+        """
+        Years in the current grade, from the Date of Rank when there is one.
+
+        A DOR in the future is a typo, not a promotion that has not happened
+        yet, so it falls back rather than returning a negative. Everything
+        downstream -- the Social Security earnings history in particular --
+        reads this rather than the stored number.
+        """
+        d = self.dor
+        if d is None:
+            return max(0.0, float(self.time_in_grade_years))
+        today = as_of or date.today()
+        years = (today - d).days / 365.25
+        if years < 0:
+            return max(0.0, float(self.time_in_grade_years))
+        return years
 
     @property
     def retirement_system(self) -> str:

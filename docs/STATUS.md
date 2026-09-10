@@ -37,7 +37,7 @@ yet.
 
 ---
 
-## 2. The Roth CZTE bug — FIXED, NOT YET COMMITTED
+## 2. The Roth CZTE bug — DONE, committed (`6973435`)
 
 This was HANDOFF's second open item and it was a genuinely wrong number.
 
@@ -103,92 +103,62 @@ regression.
   `projection.py` makes exactly 2 of the new tests fail. They are not
   passing by accident.
 
-### NOT yet done for this fix
-
-- Not committed. Working tree is dirty with all of the above.
-- Browser drive has **not** been re-run since the page-14 edit. Do it
-  before committing — the new input is inside an `input_card` and the
-  page must be re-driven per HANDOFF discipline.
+Committed as `6973435` after a full re-drive of every page.
 
 ---
 
-## 3. Date of Rank — INVESTIGATED, NOT STARTED
+## 3. Date of Rank — DONE
 
-HANDOFF's first open item, recorded as unresolved: *"Paul asked to
-'change to What is your Date of Rank?' while pointing at the
-years-of-service field. Those are different things … Still unresolved;
-ask before touching it."*
+HANDOFF recorded this as unresolved, on the reading that Paul had pointed
+at the years-of-service field, where a Date of Rank genuinely would be a
+category error — that field drives longevity pay and the retirement
+multiplier.
 
-Paul has now said: **"add Date of Rank where needed"** — an addition, not
-a rename.
-
-### What the investigation found — Paul was right, the earlier session guessed the wrong field
-
-`ServiceMember` **already carries `time_in_grade_years: float = 2.0`**,
-and the Profile page already asks for it, one row *below* years of
-service:
+**Paul was right and the earlier session checked the wrong field.**
+`ServiceMember` already carried `time_in_grade_years`, and the Profile
+page already asked for it one row *below* years of service:
 
 ```
 pages/1_Profile.py:38   "How many years have you served?"   -> years_of_service
 pages/1_Profile.py:39   "How long in your current grade?"   -> time_in_grade_years
 ```
 
-Date of Rank is exactly the date form of time in grade: TIG = today −
-DOR. The earlier session assumed Paul was pointing at `years_of_service`
-(where DOR genuinely would be wrong — that drives longevity pay and the
-retirement multiplier) and never checked the adjacent field. Pointing at
-"How long in your current grade?" and asking for Date of Rank is
-**correct and an improvement**, because:
+Date of Rank is exactly the date form of that. It is strictly better than
+a number of years, because a DOR is a fact off the LES or ORB that does
+not change until the next promotion, whereas "years in grade" is right on
+the day it is typed and quietly wrong every time the plan is opened
+afterwards. That matters: `time_in_grade_years` feeds
+`grade_history()` in `engine/income/social_security.py`, which
+reconstructs when the member was promoted in order to build the Social
+Security earnings record. A stale figure puts the promotion in the wrong
+year.
 
-- A DOR is a fact off the LES/ORB that does not change until promotion.
-- "Years in grade" goes stale the moment the plan is saved and reopened
-  next year. It is a number that silently rots.
-- `diems_date` is already stored as ISO text on the same dataclass, so
-  there is a house pattern to copy exactly.
+### What changed
 
-### Where `time_in_grade_years` is actually consumed
+| File | Change |
+|---|---|
+| `engine/profile.py` | `date_of_rank: str = ""` (ISO text, mirroring `diems_date`), a `dor` property, and `time_in_grade(as_of=None)`. DOR wins when set; the typed number is the fallback. A future or unparseable DOR falls back rather than returning a negative. |
+| `engine/income/social_security.py` | reads `member.time_in_grade()` instead of the raw field |
+| `pages/1_Profile.py` | asks for the Date of Rank; shows derived time in grade as a caption when set, and only falls back to the number widget when it is blank, so the two can never disagree |
+| `pages/3_Career.py` | shows time in grade beside the promotion sliders, which are in years of service — but only from a real DOR, since a stale figure stated that confidently is worse than saying nothing |
+| `tests/test_coach_and_career.py` | 8 tests |
 
-```
-engine/income/social_security.py:567  grade_history(...)
-engine/income/social_security.py:582  promoted_at = years_of_service - time_in_grade_years
-engine/income/social_security.py:657  steps = grade_history(..., member.time_in_grade_years, ...)
-```
+`time_in_grade_years` is deliberately **not** deleted. Every plan saved
+before this existed carries one, and old plans must keep loading — there
+is a test for exactly that.
 
-It reconstructs the earnings record for Social Security by working out
-when the member was promoted. So a stale TIG quietly distorts the SS
-earnings history — which is a real, if second-order, money error.
+### Deliberately NOT done: the retire-in-grade rule
 
-### The plan (not yet written)
+An officer must serve a minimum time in grade to retire *at* that grade,
+and retiring short of it drops the pension to the lower grade. That is a
+five-figure consequence and the app does not model it.
 
-1. Add `date_of_rank: str = ""` to `ServiceMember`, ISO text, mirroring
-   `diems_date`. Add a `dor` property mirroring the existing `diems`
-   property that parses it.
-2. Make `time_in_grade_years` **derived from DOR when DOR is set**, and
-   keep the typed number as the fallback for anyone who does not know
-   their DOR. Do NOT delete the field — old saved plans carry it and must
-   keep loading.
-3. Profile page: ask "What is your Date of Rank? (YYYY-MM-DD)" using the
-   same `text()` helper as DIEMS. When it is set, show the derived time
-   in grade as a caption rather than a second editable number, so the two
-   cannot disagree.
-4. Consider surfacing it on **Career** (`pages/3_Career.py`) — time in
-   grade gates promotion eligibility, and `engine/career/timeline.py`
-   currently schedules promotions purely off years of service.
-5. There is a real second use worth checking before building: the
-   **retire-in-grade** rule. An officer must serve a minimum time in
-   grade (generally 3 years) to retire *at* that grade, and retiring
-   short of it drops the pension to the lower grade. That is a five-
-   figure consequence and the app does not model it. Verify the rule
-   against a publisher before implementing — do not write it from
-   memory.
-6. Tests, and a browser drive.
-
-**Nothing for Date of Rank has been written yet.** Item 5 in particular
-needs a published source, and `.gov`/`.mil` hosts are unreachable from
-this container (see HANDOFF, "Sourcing rates: the .gov problem") — so it
-may need Paul to fetch a page on his Mac.
-
----
+It is not implemented because the minimums would have to be written from
+memory, and HANDOFF's rule is that a figure is verified against the
+publisher or it does not go in. `.gov` and `.mil` hosts are unreachable
+from this container. **This needs Paul to fetch the source on his Mac
+before anyone builds it.** It is the highest-value remaining item on this
+thread.
 
 ## 4. Environment notes for whoever picks this up
 
@@ -214,6 +184,8 @@ may need Paul to fetch a page on his Mac.
 
 ## 5. Still untouched from HANDOFF's open items
 
+- **The retire-in-grade minimums** (see section 3) — blocked on a
+  published source Paul has to fetch.
 - `data_editor` column headers are still noun labels rather than
   questions. They double as the DataFrame keys the save loops read back,
   so renaming them changes code, not labels.

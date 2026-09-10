@@ -39,6 +39,16 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("When you separate and promote"):
+        # Time in grade is what a promotion board actually looks at, and the
+        # sliders below are years of service, so say where the member is
+        # standing now. Only shown from a Date of Rank -- a typed number of
+        # years is stale the moment the plan is reopened, and a stale figure
+        # stated this confidently would be worse than saying nothing.
+        if m.dor is not None:
+            st.caption(f"You have {m.time_in_grade():.1f} years in {m.grade}, "
+                       f"from a Date of Rank of {m.date_of_rank}. Set it on "
+                       f"Profile.")
+
         sep = st.slider("When do you separate or retire?", min_value=max(2.0, START + 1),
                         max_value=42.0, value=float(max(END, START + 1)),
                         step=1.0, key=wkey("sepslider"), format="%g yrs")

@@ -36,8 +36,22 @@ with inputs:
                     "on a separate, higher line.")
         number("How many years have you served?", m, "years_of_service", key=wkey("yos"),
                min_value=0.0, max_value=45.0, step=0.5)
-        number("How long in your current grade?", m, "time_in_grade_years",
-               key=wkey("tig"), min_value=0.0, max_value=30.0, step=0.5)
+        text("What is your Date of Rank? (YYYY-MM-DD)", m, "date_of_rank",
+             key=wkey("dor"), placeholder="2023-06-01",
+             help="The day you pinned on your current grade. It is on your LES "
+                  "and your ORB or ERB. It is NOT your DIEMS date and NOT the "
+                  "day you joined — it resets at every promotion. Given it, "
+                  "the app works out your time in grade and keeps it right as "
+                  "the years pass; leave it blank and it asks you for the "
+                  "number instead, which is correct on the day you type it and "
+                  "stale every time you open the plan afterwards.")
+        if m.dor is not None:
+            st.caption(f"Time in grade: {m.time_in_grade():.1f} years.")
+        else:
+            number("How long in your current grade?", m, "time_in_grade_years",
+                   key=wkey("tig"), min_value=0.0, max_value=30.0, step=0.5,
+                   help="Only asked because there is no Date of Rank above. "
+                        "Enter that instead and this looks after itself.")
         integer("What year were you born?", m, "birth_year", key=wkey("by"),
                 min_value=1930, max_value=2010)
         choice("Which sex should we use for life expectancy?", m, "sex",
