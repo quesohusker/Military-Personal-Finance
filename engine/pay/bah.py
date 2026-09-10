@@ -70,6 +70,7 @@ class BAHResult:
     mha: str = ""
     mha_name: str = ""
     year: int = 0
+    is_average: bool = False     # a national typical rate, not this member's
     note: str = ""
 
 
@@ -265,3 +266,154 @@ def mha_options(data: BAHData | None) -> list[tuple[str, str]]:
         return []
     return sorted(((k, data.mha_names.get(k, k)) for k in data.with_dependents),
                   key=lambda t: t[1])
+
+
+# --------------------------------------------------------------------------
+# National average, for when the duty location is not known yet
+# --------------------------------------------------------------------------
+
+def average_bah(grade: str, has_dependents: bool, data: BAHData | None = None,
+                method: str = "median") -> float:
+    """
+    A typical BAH rate across all Military Housing Areas for a grade.
+
+    Used when the member does not yet know where they are going. The median is
+    the default rather than the mean: a handful of very expensive areas
+    (Honolulu, the DC metro, the Bay Area) pull the mean well above what a
+    typical assignment pays.
+    """
+    if data is None:
+        return 0.0
+    try:
+        code = G.get(grade).code
+    except KeyError:
+        return 0.0
+
+    table = data.with_dependents if has_dependents else data.without_dependents
+    values = sorted(float(row[code]) for row in table.values()
+                    if code in row and row[code])
+    if not values:
+        return 0.0
+    if method == "mean":
+        return sum(values) / len(values)
+    mid = len(values) // 2
+    if len(values) % 2:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2.0
+
+
+def bah_range(grade: str, has_dependents: bool,
+              data: BAHData | None = None) -> tuple[float, float]:
+    """Lowest and highest published rate for a grade, for context on an average."""
+    if data is None:
+        return (0.0, 0.0)
+    try:
+        code = G.get(grade).code
+    except KeyError:
+        return (0.0, 0.0)
+    table = data.with_dependents if has_dependents else data.without_dependents
+    values = [float(row[code]) for row in table.values() if code in row and row[code]]
+    return (min(values), max(values)) if values else (0.0, 0.0)
+
+
+def lookup_or_average(zipcode: str, grade: str, has_dependents: bool,
+                      data: BAHData | None = None) -> BAHResult:
+    """
+    BAH for a known location, falling back to the national median when the
+    location is not known yet.
+
+    A member who has not received orders still needs a number to plan with, and
+    a typical rate is far more useful than a zero. The result is flagged so the
+    UI can say plainly that it is an estimate.
+    """
+    exact = lookup(zipcode, grade, has_dependents, data)
+    if exact.found or data is None:
+        return exact
+
+    avg = average_bah(grade, has_dependents, data)
+    if avg <= 0:
+        return exact
+
+    lo, hi = bah_range(grade, has_dependents, data)
+    return BAHResult(
+        found=True, monthly=avg, annual=avg * 12.0, year=data.year,
+        is_average=True, mha_name="National median",
+        note=(f"Using the national median for {G.get(grade).label}, since the "
+              f"duty location is not set. Published rates for this grade run "
+              f"from ${lo:,.0f} to ${hi:,.0f} a month, so treat this as a "
+              f"placeholder and replace it once you have orders."),
+    )
+
+
+# --------------------------------------------------------------------------
+# What BAH is actually worth
+# --------------------------------------------------------------------------
+
+# Housing and utilities are assumed to cost slightly MORE than BAH.
+#
+# This is not pessimism, it is policy. Since 2015 BAH has been deliberately set
+# below full local housing cost, with members absorbing an out-of-pocket share
+# of roughly 5%. So the typical member pays about 105% of their allowance to be
+# housed, and the allowance is a housing offset rather than income.
+#
+# Treating BAH as free cash flow is the single most common way a military
+# budget projection goes wrong: it banks the allowance as savings and forgets
+# the rent it exists to pay.
+DEFAULT_HOUSING_COST_SHARE = 1.05
+
+
+@dataclass
+class HousingPosition:
+    bah_monthly: float = 0.0
+    housing_cost_monthly: float = 0.0
+    surplus_monthly: float = 0.0
+    surplus_annual: float = 0.0
+    share_consumed: float = 0.0
+    note: str = ""
+
+
+def housing_position(bah_monthly: float, housing_cost_monthly: float = 0.0,
+                     assumed_share: float = DEFAULT_HOUSING_COST_SHARE) -> HousingPosition:
+    """
+    What is actually left over from BAH after housing.
+
+    Pass the member's real rent or PITI plus utilities when known. Otherwise a
+    default share is assumed, because BAH is set to cover median local cost --
+    it is not a moneymaker, and a model that banks it as savings will overstate
+    what the household can put away.
+    """
+    cost = housing_cost_monthly if housing_cost_monthly > 0 else bah_monthly * assumed_share
+    surplus = bah_monthly - cost
+    share = (cost / bah_monthly) if bah_monthly else 0.0
+
+    estimated = housing_cost_monthly <= 0
+
+    if bah_monthly <= 0:
+        note = "No housing allowance."
+    elif surplus > 200:
+        note = (f"You keep about ${surplus:,.0f} a month of your allowance. That "
+                f"is real, tax-free surplus, and unusual — most members pay more "
+                f"than their BAH to be housed. It also disappears the moment you "
+                f"move somewhere more expensive, so do not build a fixed "
+                f"commitment on it.")
+    elif surplus < -50:
+        if estimated:
+            note = (f"Assuming housing and utilities run "
+                    f"{assumed_share * 100:.0f}% of BAH, you pay about "
+                    f"${-surplus:,.0f} a month out of taxable pay to be housed. "
+                    f"BAH has been set below full local housing cost since 2015 — "
+                    f"the out-of-pocket share is deliberate policy, not a "
+                    f"budgeting failure. Enter your actual rent or PITI plus "
+                    f"utilities to replace this estimate.")
+        else:
+            note = (f"You pay about ${-surplus:,.0f} a month above your allowance "
+                    f"out of taxable pay. That is a genuine budget line, not a "
+                    f"rounding error.")
+    else:
+        note = ("Your housing costs consume essentially all of your allowance, "
+                "which is what BAH is designed to do. Treat it as covering "
+                "housing rather than as income you can save.")
+
+    return HousingPosition(bah_monthly=bah_monthly, housing_cost_monthly=cost,
+                           surplus_monthly=surplus, surplus_annual=surplus * 12.0,
+                           share_consumed=share, note=note)

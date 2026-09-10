@@ -454,3 +454,96 @@ def test_all_rates_returns_every_variant():
     d = nl.all_rates("E-6")
     assert len(d) == 4
     assert all(r.found for r in d.values())
+
+
+# ==========================================================================
+# National average fallback, and what BAH is actually worth
+# ==========================================================================
+
+@real
+def test_average_bah_sits_inside_the_published_range():
+    d = bah.load()
+    for grade in ("E-3", "E-5", "E-7", "O-3", "O-5"):
+        med = bah.average_bah(grade, True, d)
+        lo, hi = bah.bah_range(grade, True, d)
+        assert lo < med < hi, grade
+
+
+@real
+def test_average_is_the_median_not_the_mean():
+    """A few very expensive areas drag the mean above a typical assignment."""
+    d = bah.load()
+    median = bah.average_bah("E-5", True, d, method="median")
+    mean = bah.average_bah("E-5", True, d, method="mean")
+    assert median < mean
+
+
+@real
+def test_average_rises_with_grade_and_with_dependents():
+    d = bah.load()
+    assert bah.average_bah("E-7", True, d) > bah.average_bah("E-5", True, d)
+    assert bah.average_bah("E-5", True, d) > bah.average_bah("E-5", False, d)
+
+
+@real
+def test_lookup_or_average_falls_back_when_the_location_is_unknown():
+    d = bah.load()
+    r = bah.lookup_or_average("", "E-5", True, d)
+    assert r.found and r.is_average
+    assert r.monthly == pytest.approx(bah.average_bah("E-5", True, d))
+    assert "placeholder" in r.note
+
+
+@real
+def test_lookup_or_average_prefers_a_real_rate_when_the_zip_is_known():
+    d = bah.load()
+    r = bah.lookup_or_average("92134", "E-5", True, d)
+    assert r.found and not r.is_average
+    assert "SAN DIEGO" in r.mha_name.upper()
+
+
+@real
+def test_lookup_or_average_falls_back_for_an_overseas_zip():
+    d = bah.load()
+    r = bah.lookup_or_average("09045", "E-5", True, d)
+    assert r.found and r.is_average
+
+
+def test_housing_is_assumed_to_cost_more_than_bah():
+    """Policy, not pessimism: BAH has been set below full cost since 2015."""
+    assert bah.DEFAULT_HOUSING_COST_SHARE > 1.0
+    hp = bah.housing_position(2_000)
+    assert hp.housing_cost_monthly > 2_000
+    assert hp.surplus_monthly < 0
+
+
+def test_housing_position_uses_a_real_cost_when_given_one():
+    hp = bah.housing_position(2_000, housing_cost_monthly=1_500)
+    assert hp.housing_cost_monthly == 1_500
+    assert hp.surplus_monthly == 500
+    assert "surplus" in hp.note
+
+
+def test_housing_position_flags_paying_well_above_the_allowance():
+    hp = bah.housing_position(1_800, housing_cost_monthly=2_600)
+    assert hp.surplus_monthly == -800
+    assert "above your allowance" in hp.note
+
+
+def test_housing_position_explains_an_estimated_shortfall_differently():
+    """An estimate should say it is an estimate and how to replace it."""
+    estimated = bah.housing_position(2_000).note
+    actual = bah.housing_position(2_000, housing_cost_monthly=2_400).note
+    assert "Assuming" in estimated and "2015" in estimated
+    assert "Assuming" not in actual
+
+
+def test_housing_position_handles_no_allowance():
+    hp = bah.housing_position(0)
+    assert hp.surplus_monthly == 0
+    assert "No housing allowance" in hp.note
+
+
+def test_share_consumed_reflects_the_assumption():
+    hp = bah.housing_position(2_000)
+    assert hp.share_consumed == pytest.approx(bah.DEFAULT_HOUSING_COST_SHARE)
