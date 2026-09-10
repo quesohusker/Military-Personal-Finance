@@ -6,8 +6,12 @@ The app ships an approximation, because the machine it was built on could not
 reach ssa.gov. This installs the real thing, which then takes precedence.
 
     1. Open https://www.ssa.gov/oact/STATS/table4c6.html
-    2. Save the page (or copy the table into a text file)
+    2. File > Save As > Page Source. ssa.gov refuses every automated
+       request, so a browser is the only way to get the page at all.
     3. python scripts/import_life_table.py --file <that file>
+
+Reads the saved HTML table directly -- one <tr> per age, seven <td> cells --
+and falls back to a whitespace layout if the page is pasted as plain text.
 
 The table has two blocks, male then female. Each row is:
 
@@ -31,34 +35,67 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from engine import mortality as M  # noqa: E402
 
-ROW = re.compile(
+# Plain-text layout: seven whitespace-separated columns on one line.
+ROW_TEXT = re.compile(
     r"^\s*(\d{1,3})\s+"          # exact age
-    r"([\d.]+)\s+"               # death probability
-    r"([\d,]+)\s+"               # number of lives
-    r"([\d.]+)\s+"               # life expectancy   <- male
-    r"([\d.]+)\s+"               # death probability
-    r"([\d,]+)\s+"               # number of lives
-    r"([\d.]+)\s*$"              # life expectancy   <- female
+    r"([\d.]+)\s+"               # male death probability
+    r"([\d,]+)\s+"               # male number of lives
+    r"([\d.]+)\s+"               # male LIFE EXPECTANCY
+    r"([\d.]+)\s+"               # female death probability
+    r"([\d,]+)\s+"               # female number of lives
+    r"([\d.]+)\s*$"              # female LIFE EXPECTANCY
 )
+
+# HTML layout: one <tr> per age, seven <td> cells in the same order. This is
+# what a browser Save As produces, and it is the only way to get the page at
+# all -- ssa.gov refuses every automated request.
+ROW_HTML = re.compile(r"(?is)<tr[^>]*>(.*?)</tr>")
+CELL = re.compile(r"(?is)<t[dh][^>]*>(.*?)</t[dh]>")
+
+
+def _num(cell: str) -> str:
+    """Cell text with tags, entities and thousands separators removed."""
+    cell = re.sub(r"(?is)<[^>]+>", " ", cell)
+    cell = cell.replace("&nbsp;", " ").replace("\xa0", " ")
+    return cell.replace(",", "").strip()
 
 
 def parse(text: str) -> tuple[dict, dict]:
     """
-    SSA publishes male and female side by side on one row.
+    Read the table, from HTML or from plain text.
 
-    Rows that do not match the full seven-column shape are skipped rather than
-    guessed at — a partial match is exactly how a column shift gets in.
+    Rows that do not match the full seven-column shape are skipped rather
+    than guessed at -- a partial match is exactly how a column shift gets in,
+    and a shifted table produces plausible, wrong answers for every user.
     """
     male, female = {}, {}
+
+    for row in ROW_HTML.findall(text):
+        cells = [_num(c) for c in CELL.findall(row)]
+        if len(cells) != 7:
+            continue
+        try:
+            age = int(cells[0])
+            m_exp, f_exp = float(cells[3]), float(cells[6])
+            float(cells[1]); float(cells[4])       # the probabilities must
+            float(cells[2]); float(cells[5])       # parse, or it is a header
+        except ValueError:
+            continue
+        if 0 <= age <= 125:
+            male[age], female[age] = m_exp, f_exp
+
+    if male:
+        return male, female
+
     for line in text.splitlines():
-        line = re.sub(r"<[^>]+>", " ", line)          # strip any HTML
-        line = line.replace(" ", " ")
-        m = ROW.match(line)
+        line = re.sub(r"<[^>]+>", " ", line).replace("\xa0", " ")
+        m = ROW_TEXT.match(re.sub(r"[ \t]+", " ", line))
         if not m:
             continue
         age = int(m.group(1))
-        male[age] = float(m.group(4))
-        female[age] = float(m.group(7))
+        if 0 <= age <= 125:
+            male[age] = float(m.group(4))
+            female[age] = float(m.group(7))
     return male, female
 
 

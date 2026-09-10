@@ -89,7 +89,7 @@ def test_the_adapter_maps_the_retiree_household_onto_the_engine():
     assert p.primary.annual_wages == 95_000.0          # a retiree's second career
     assert p.primary.traditional_contribution == 0.0   # no longer serving
     assert p.primary.roth_contribution == 0.0
-    assert p.primary.death_age == 86                   # life expectancy + 5
+    assert p.primary.death_age == 87                   # life expectancy + 5
 
     # No spouse record on the file, so the spouse is the member's contemporary
     # and carries the spouse income from the Promotions and PCS page.
@@ -130,7 +130,7 @@ def test_the_retiree_defaults_are_derived_from_the_plan_not_invented():
     assert d.start_year == YEAR
     assert d.wages_annual == 95_000.0
     assert d.work_through_year == 2040                 # age 65
-    assert d.death_age == 86
+    assert d.death_age == 87                          # life expectancy + 5
     assert d.spouse_birth_year == 1975
     assert d.conversion_start_year == YEAR
     assert d.conversion_end_year == 2049
@@ -240,14 +240,19 @@ def test_the_retiree_sample_answer_is_stable():
     c = compare(retiree_profile())
     base, conv = c.base, c.conv
 
-    assert base.lifetime_total_tax == pytest.approx(2_022_306.02, rel=1e-6)
-    assert conv.lifetime_total_tax == pytest.approx(2_075_948.81, rel=1e-6)
-    assert base.heir_value_total == pytest.approx(10_985_461.95, rel=1e-6)
-    assert conv.heir_value_total == pytest.approx(11_014_415.89, rel=1e-6)
-    assert base.ending_traditional == pytest.approx(2_030_080.81, rel=1e-6)
-    assert conv.ending_traditional == pytest.approx(541_640.23, rel=1e-6)
-    assert base.lifetime_rmds == pytest.approx(1_405_501.07, rel=1e-6)
-    assert conv.lifetime_rmds == pytest.approx(374_997.84, rel=1e-6)
+    # Re-pinned when the published SSA life table replaced the built-in
+    # approximation: it puts this member's death at 87 rather than 86, and one
+    # extra year moved the case for converting by half. Longer life means more
+    # RMD years, so leaving the balance alone costs more -- the conversion
+    # advantage grew from $28,954 to $43,482 on that single year.
+    assert base.lifetime_total_tax == pytest.approx(2_135_635.09, rel=1e-6)
+    assert conv.lifetime_total_tax == pytest.approx(2_146_035.29, rel=1e-6)
+    assert base.heir_value_total == pytest.approx(11_402_336.19, rel=1e-6)
+    assert conv.heir_value_total == pytest.approx(11_445_818.30, rel=1e-6)
+    assert base.ending_traditional == pytest.approx(1_964_667.09, rel=1e-6)
+    assert conv.ending_traditional == pytest.approx(524_187.38, rel=1e-6)
+    assert base.lifetime_rmds == pytest.approx(1_546_478.90, rel=1e-6)
+    assert conv.lifetime_rmds == pytest.approx(412_611.74, rel=1e-6)
     assert conv.lifetime_conversions == pytest.approx(1_398_630.56, rel=1e-6)
 
     # Converting costs this household MORE tax in life and still wins, because

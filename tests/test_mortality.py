@@ -39,8 +39,11 @@ def test_interpolation_between_anchors_is_monotone():
 
 def test_ages_outside_the_table_clamp_rather_than_crash():
     t = M.load()
-    assert t.remaining(-5) == t.remaining(0)
-    assert t.remaining(140) == t.remaining(110)
+    # Clamp to whatever the loaded table actually covers: the published SSA
+    # table runs to 119, the built-in fallback stops at 110.
+    lo, hi = min(t.male), max(t.male)
+    assert t.remaining(lo - 5) == t.remaining(lo)
+    assert t.remaining(hi + 30) == t.remaining(hi)
 
 
 def test_planning_age_sits_past_the_median():

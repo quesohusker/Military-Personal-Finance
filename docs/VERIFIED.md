@@ -22,6 +22,7 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 | VGLI windows and cap | `va_vgli_rates` | **CONFIRMED** | 240 days with no health review; '1 year and 120 days' = the 485-day outer deadline; $10,000 to $500,000 of coverage. |
 | TSP expense ratios | `tsp_expense_ratios` | **CORRECTED** | G 0.034, F 0.035, C 0.035, S 0.051, I 0.048 percent. Every one was carried HIGHER than published -- G by nearly half. |
 | TSP I Fund index | `tsp_expense_ratios` | **CORRECTED** | MSCI ACWI IMI ex USA ex China ex Hong Kong. The exclusion of China and Hong Kong was missing from the description. |
+| SSA period life table | browser save | **INSTALLED** | 120 ages, both sexes, through the importer's shape checks. `is_authoritative()` now returns True. The approximation it replaces ran two years SHORT at every age under 60. |
 | TSP L Fund lineup | `tsp_lifecycle_funds` | **CONFIRMED** | L Income and L 2030 through L 2075 in five-year steps. L 2075 was rated LOW confidence on the grounds it might not exist yet. It does. |
 
 ## Source files
@@ -44,26 +45,32 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 
 ## Still unverified
 
-Three hosts refuse every automated request -- SSA, DFAS and DTMO all sit
-behind a bot filter that neither a full browser header set nor curl's
-different TLS handshake gets past. TRICARE returns a JavaScript shell. What
-that leaves outstanding, in the order it changes an answer:
+SSA, DFAS and DTMO refuse every automated request -- a bot filter that
+neither a full browser header set nor curl's different TLS handshake gets
+past. TRICARE returns a JavaScript shell. What that leaves outstanding, in
+the order it changes an answer:
 
-1. **The SSA period life table.** `engine/mortality.py` still runs on a
-   built-in approximation, and every pension value, SBP ratio and conversion
-   horizon in the app is measured against it. `scripts/import_life_table.py`
-   will install a browser-saved copy through the same shape checks.
-2. **The Part B IRMAA brackets.** The standard premium is confirmed; the six
-   income tiers are not. They are what makes a Roth conversion cost more two
-   years later, so the healthcare page's central argument rests on them.
-   Note also that `engine/tax/tables.py` carries Part D IRMAA figures that
-   re-derive from a 2025 base premium -- last year's amounts.
-3. **The SSA PIA bend points.** Everything the Social Security page estimates
+1. **The Part B IRMAA brackets.** The standard premium and deductible are
+   confirmed; the six income tiers are not. They are what makes a Roth
+   conversion cost more two years later, so the healthcare page's central
+   argument rests on them. Note also that `engine/tax/tables.py` carries Part
+   D IRMAA figures that re-derive from a 2025 base premium -- last year's.
+2. **The SSA PIA bend points.** Everything the Social Security page estimates
    for someone without a statement scales directly with these two numbers.
-4. **TRICARE enrolment fees and the catastrophic cap.** The retiree lifetime
+3. **TRICARE enrolment fees and the catastrophic cap.** The retiree lifetime
    figure is dominated by Part B, so these move the total by a few percent.
-5. **BAS.** Small, but it is in every pay calculation, and the original brief
+4. **BAS.** Small, but it is in every pay calculation, and the original brief
    for this project had the enlisted and officer rates backwards.
 
-`python3 scripts/fetch_gov_data.py --manual` prints the short list with the
-saving instructions each one needs.
+`python3 scripts/fetch_gov_data.py --manual` prints the list with the saving
+instructions each one needs. Save the SSA pages as **Page Source**; TRICARE
+builds itself in JavaScript, so use Print to PDF there.
+
+## What one year of life expectancy was worth
+
+The installed table puts the retired O-5 sample's death at 87 rather than the
+86 the approximation gave. That single year moved the case for Roth
+conversion by half: the legacy gain went from $28,954 to $43,482, because a
+longer life means more RMD years, and more RMD years is exactly what leaving
+the balance alone costs you. Two tests that pin those figures failed when the
+table was installed, which is what they are for.

@@ -19,11 +19,13 @@ SBP above all -- planning to the average understates the benefit, because the
 whole value of that insurance sits in the half of the distribution where you
 or your survivor lives a long time. `planning_age()` exists for that.
 
-PROVENANCE -- READ THIS BEFORE TRUSTING THE NUMBERS.
-The built-in table is an APPROXIMATION of the SSA period life table and has
-not been checked against the published file, because this machine cannot
-reach ssa.gov. It is good enough to replace a round number, and not good
-enough for anything that turns on a year. Install the real thing with
+PROVENANCE. The published SSA period life table is installed at
+data/mortality/life_table.json and is what load() returns; is_authoritative()
+says so, and the pages report it. The built-in table below is the fallback for
+a checkout without that file. It was written from recollection and, now that
+there is something to check it against, it ran two years SHORT of the real
+figure at every age under 60 and converged above 75 -- close enough to beat a
+round number, wrong enough to matter over a 30-year projection. Reinstall with
 
     python scripts/import_life_table.py --file <downloaded SSA table>
 
@@ -43,7 +45,8 @@ SEX_FEMALE = "Female"
 SEX_UNSPECIFIED = ""
 SEXES = [SEX_UNSPECIFIED, SEX_MALE, SEX_FEMALE]
 
-BUILTIN_SOURCE = "SSA period life table (approximate, 2021 vintage)"
+BUILTIN_SOURCE = ("SSA period life table (built-in approximation -- runs "
+                  "about two years short under age 60)")
 
 # Remaining years of life at exact age. Anchors every five years from 20;
 # values between anchors are interpolated linearly, which is accurate to well

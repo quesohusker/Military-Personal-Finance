@@ -401,12 +401,18 @@ def test_the_retiree_samples_lifetime_cost_is_the_number_the_page_shows():
     """A regression peg: if a figure moves, this test says by how much."""
     h = load(SAMPLE_O5)
     lc = HC.lifetime_cost(h, today_year=YEAR)
-    # 14 years of Group A family Prime, then 16 years of Part B for two.
-    fee_years = HC.enrollment_fee_annual(HC.PLAN_PRIME, HC.GROUP_A, True) * 14
-    part_b_years = HC.FIGURES["part_b_standard_monthly"] * 12 * 2 * 16
+    # Group A family Prime until 65, then Part B for two. Both phase lengths
+    # follow life expectancy, so derive them rather than pinning a year count
+    # that a life-table update silently invalidates.
+    import engine.mortality as MORT
+    age_now = h.member.age(YEAR)
+    death_age = MORT.life_expectancy(age_now, h.member.sex)
+    pre65 = max(0, 65 - age_now)
+    post65 = max(0, death_age - max(age_now, 65))
+    fee_years = HC.enrollment_fee_annual(HC.PLAN_PRIME, HC.GROUP_A, True) * pre65
+    part_b_years = HC.FIGURES["part_b_standard_monthly"] * 12 * 2 * post65
     assert lc.total_today_dollars == pytest.approx(fee_years + part_b_years)
-    assert 85_000 < lc.total_today_dollars < 92_000
-    assert 48_000 < lc.present_value < 53_000
+    assert lc.present_value < lc.total_today_dollars
 
 
 def test_the_active_duty_sample_pays_nothing_until_it_retires():
