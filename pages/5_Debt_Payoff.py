@@ -3,18 +3,21 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 import pandas as pd
-st.set_page_config(page_title="Debt Payoff", page_icon="💳", layout="wide")
 
-from ui.panel import (wkey, render_save_load, page_header, fmt_money, esc,
-                      md_money, render_findings, mark_dirty, invalidate)
+from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
+                      section, metric_row, fmt_money, esc, md_money,
+                      render_findings, mark_dirty, invalidate)
 from engine.debt import payoff as P
 from engine.profile import SERVING
 
-h = render_save_load("debt")
+h = get_household()
 m = h.member
-page_header("💳 Debt Payoff",
+page_header("💳 Getting out of debt",
             "Avalanche against snowball, with the SCRA interest cap priced in.")
 
+# --------------------------------------------------------------------------
+# The debt table is data entry, but a six-column editor cannot be worked in a
+# narrow column, so it keeps the full width above the two-pane split.
 # --------------------------------------------------------------------------
 st.markdown("### Your debts")
 st.caption("Mark anything you took on **before** you entered active duty — the "
@@ -61,91 +64,91 @@ if st.button("Save these debts", type="primary", key=wkey("savedebts")):
     st.rerun()
 
 if not h.debts:
-    st.info("No debts recorded. Add them above and press Save.", icon="ℹ️")
+    st.info("No debts recorded. Add them in the table above and press Save.",
+            icon="ℹ️")
     st.stop()
 
-# --------------------------------------------------------------------------
-st.markdown("---")
-st.markdown("### How much can you put toward debt?")
-c1, c2, c3 = st.columns(3)
-with c1:
-    minimums = sum(d.minimum_payment for d in h.debts)
-    st.metric("Minimum payments", f"{fmt_money(minimums)}/mo")
-with c2:
-    extra = st.number_input("Extra per month, above the minimums", value=200.0,
-                            step=50.0, min_value=0.0, format="%.2f",
-                            key=wkey("extra"))
-with c3:
-    scra_on = st.toggle("SCRA 6% cap invoked", value=False, key=wkey("scraon"),
-                        help="Turn on to see what capping your pre-service debt "
-                             "at 6% is worth. It is not automatic — you must "
-                             "request it in writing with a copy of your orders.")
-    st.metric("Total budget", f"{fmt_money(minimums + extra)}/mo")
+inputs, results = two_pane()
 
+# ==========================================================================
+# Left: how much you can put against the debt.
+# ==========================================================================
+with inputs:
+    with input_card("How much you can pay"):
+        extra = st.number_input("Extra per month, above the minimums", value=200.0,
+                                step=50.0, min_value=0.0, format="%.2f",
+                                key=wkey("extra"))
+        scra_on = st.toggle("SCRA 6% cap invoked", value=False, key=wkey("scraon"),
+                            help="Turn on to see what capping your pre-service debt "
+                                 "at 6% is worth. It is not automatic — you must "
+                                 "request it in writing with a copy of your orders.")
+
+minimums = sum(d.minimum_payment for d in h.debts)
 comparison = P.compare_strategies(h.debts, extra, scra_active=scra_on)
 
-# --------------------------------------------------------------------------
-st.markdown("---")
-st.markdown("### Avalanche against snowball")
+# ==========================================================================
+# Right: what that budget buys.
+# ==========================================================================
+with results:
+    metric_row([("Minimum payments", f"{fmt_money(minimums)}/mo"),
+                ("Total budget", f"{fmt_money(minimums + extra)}/mo")])
 
-cols = st.columns(2)
-for col, strategy in zip(cols, (P.STRATEGY_AVALANCHE, P.STRATEGY_SNOWBALL)):
-    res = comparison.results[strategy]
-    with col:
-        with st.container(border=True):
-            st.markdown(f"**{esc(strategy)}**")
-            if not res.is_solvable:
-                st.error("At this payment level these debts never get paid off.",
-                         icon="🚨")
-                continue
-            a, b = st.columns(2)
-            a.metric("Debt-free in", f"{res.months} months",
-                     f"{res.years:.1f} years")
-            b.metric("Interest paid", fmt_money(res.total_interest))
-            order = P.order_debts(h.debts, strategy, scra_on)
-            st.caption("Attack order: " + esc(" → ".join(d.name for d in order)))
+    with section("Avalanche against snowball"):
+        cols = st.columns(2)
+        for col, strategy in zip(cols, (P.STRATEGY_AVALANCHE, P.STRATEGY_SNOWBALL)):
+            res = comparison.results[strategy]
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{esc(strategy)}**")
+                    if not res.is_solvable:
+                        st.error("At this payment level these debts never get paid off.",
+                                 icon="🚨")
+                        continue
+                    st.metric("Debt-free in", f"{res.months} months",
+                              f"{res.years:.1f} years")
+                    st.metric("Interest paid", fmt_money(res.total_interest))
+                    order = P.order_debts(h.debts, strategy, scra_on)
+                    st.caption("Attack order: " + esc(" → ".join(d.name for d in order)))
 
-if comparison.best_by_interest:
-    gap, months = comparison.interest_gap, comparison.months_gap
-    if gap < 200:
-        st.info(f"The two methods are within {md_money(gap)} of each other here. "
-                f"Pick the one you will actually stick to — snowball's early win "
-                f"is worth more than a rounding error.", icon="💡")
-    else:
-        st.success(f"**{esc(comparison.best_by_interest)}** saves "
-                   f"{md_money(gap)} and {months} month(s).", icon="🏆")
+        if comparison.best_by_interest:
+            gap, months = comparison.interest_gap, comparison.months_gap
+            if gap < 200:
+                st.info(f"The two methods are within {md_money(gap)} of each other here. "
+                        f"Pick the one you will actually stick to — snowball's early win "
+                        f"is worth more than a rounding error.", icon="💡")
+            else:
+                st.success(f"**{esc(comparison.best_by_interest)}** saves "
+                           f"{md_money(gap)} and {months} month(s).", icon="🏆")
 
-if comparison.scra_savings > 0:
-    st.success(f"**Invoking SCRA is worth {md_money(comparison.scra_savings)} "
-               f"and {comparison.scra_months_saved} month(s) off your payoff "
-               f"date.** Write to each lender with a copy of your orders. They "
-               f"must apply the 6% cap retroactively to the start of your active "
-               f"duty and forgive the excess interest — not defer it.", icon="⚖️")
+        if comparison.scra_savings > 0:
+            st.success(f"**Invoking SCRA is worth {md_money(comparison.scra_savings)} "
+                       f"and {comparison.scra_months_saved} month(s) off your payoff "
+                       f"date.** Write to each lender with a copy of your orders. They "
+                       f"must apply the 6% cap retroactively to the start of your active "
+                       f"duty and forgive the excess interest — not defer it.", icon="⚖️")
 
-# --------------------------------------------------------------------------
-st.markdown("---")
-st.markdown("### Balance over time")
-best = comparison.results.get(comparison.best_by_interest or P.STRATEGY_AVALANCHE)
-if best and best.is_solvable and best.schedule:
-    frames = []
-    for strategy, res in comparison.results.items():
-        if not res.is_solvable:
-            continue
-        for row in res.schedule:
-            frames.append({"Month": row.month, "Balance": row.total_balance,
-                           "Strategy": strategy})
-    if frames:
-        df = pd.DataFrame(frames)
-        st.line_chart(df, x="Month", y="Balance", color="Strategy", height=320)
+    with section("Balance over time"):
+        best = comparison.results.get(comparison.best_by_interest
+                                      or P.STRATEGY_AVALANCHE)
+        if best and best.is_solvable and best.schedule:
+            frames = []
+            for strategy, res in comparison.results.items():
+                if not res.is_solvable:
+                    continue
+                for row in res.schedule:
+                    frames.append({"Month": row.month, "Balance": row.total_balance,
+                                   "Strategy": strategy})
+            if frames:
+                df = pd.DataFrame(frames)
+                st.line_chart(df, x="Month", y="Balance", color="Strategy", height=320)
 
-    st.markdown("**When each debt clears**")
-    payoff = [{"Debt": name, "Month": month,
-               "Years": round(month / 12.0, 1)}
-              for name, month in sorted(best.payoff_month.items(),
-                                        key=lambda kv: kv[1])]
-    if payoff:
-        st.dataframe(pd.DataFrame(payoff), use_container_width=True,
-                     hide_index=True)
+            st.markdown("**When each debt clears**")
+            payoff = [{"Debt": name, "Month": month,
+                       "Years": round(month / 12.0, 1)}
+                      for name, month in sorted(best.payoff_month.items(),
+                                                key=lambda kv: kv[1])]
+            if payoff:
+                st.dataframe(pd.DataFrame(payoff), use_container_width=True,
+                             hide_index=True)
 
-st.markdown("---")
-render_findings(P.payoff_findings(h.debts, comparison, scra_on))
+    render_findings(P.payoff_findings(h.debts, comparison, scra_on))

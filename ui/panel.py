@@ -42,7 +42,7 @@ def get_household() -> Household:
 
 def set_household(h: Household) -> None:
     version = st.session_state.get(VERSION_KEY, 0) + 1
-    keep = {PROFILE_KEY, VERSION_KEY}
+    keep = {PROFILE_KEY, VERSION_KEY, PIN_KEY}
     for k in list(st.session_state.keys()):
         if k not in keep:
             try:
@@ -64,119 +64,221 @@ def invalidate() -> None:
 
 
 # --------------------------------------------------------------------------
-# Save / load bar
+# Save / load, in the sidebar
 # --------------------------------------------------------------------------
 
-def render_save_load(page_key: str) -> Household:
-    """Render the save/load bar. Call this FIRST on every page."""
+PIN_KEY = "mpf_sidebar_pinned"
+PENDING_UPLOAD = "mpf_pending_upload"
+
+
+def render_sidebar() -> Household:
+    """
+    The plan controls, and the pin.
+
+    These used to sit in a bordered box at the top of every page, which cost
+    roughly a fifth of the first screen on twelve pages. In the sidebar they
+    are visible from everywhere and cost nothing.
+    """
     h = get_household()
 
-    with st.container(border=True):
-        st.markdown("#### 💾 Save / Load your plan")
-        name_col, save_col, load_col = st.columns([2.2, 1, 1.6])
+    with st.sidebar:
+        # st.navigation renders its links at the top of the sidebar and there
+        # is no way to put anything above them, so these controls sit below.
+        st.divider()
+        st.toggle("📌 Keep this menu open", key=PIN_KEY,
+                  help="Pin the menu so it stays open while you move between "
+                       "pages. Unpin it to reclaim the width.")
 
-        with name_col:
-            new_name = st.text_input(
-                "Plan name", value=h.profile_name, key=wkey(f"planname_{page_key}"),
-                label_visibility="collapsed", placeholder="Name this plan")
-            if new_name and new_name != h.profile_name:
-                h.profile_name = new_name
+        st.divider()
+        st.markdown('<div class="mpf-side-head">Your plan</div>',
+                    unsafe_allow_html=True)
 
-        with save_col:
-            if st.button("Save", key=wkey(f"save_{page_key}"), type="primary",
-                         use_container_width=True):
-                try:
-                    p = storage.save_slot(h, h.profile_name)
-                    st.session_state[DIRTY_KEY] = False
-                    st.success(f"Saved to {p.name}", icon="✅")
-                except OSError as e:
-                    st.error(f"Could not save: {e}")
+        new_name = st.text_input("Plan name", value=h.profile_name,
+                                 key=wkey("planname_side"),
+                                 label_visibility="collapsed",
+                                 placeholder="Name this plan")
+        if new_name and new_name != h.profile_name:
+            h.profile_name = new_name
 
-        with load_col:
-            slots = storage.list_slots()
-            options = ["— load a saved plan —"] + [s["name"] for s in slots]
-            picked = st.selectbox("Load", options, key=wkey(f"load_{page_key}"),
-                                  label_visibility="collapsed")
-            if picked != options[0]:
-                if st.button(f"Load '{picked}'", key=wkey(f"loadbtn_{page_key}"),
-                             use_container_width=True):
-                    try:
-                        set_household(storage.load_slot(picked))
-                        st.rerun()
-                    except (OSError, ValueError) as e:
-                        st.error(f"Could not load: {e}")
+        st.download_button("⬇️  Download plan", data=storage.to_download_bytes(h),
+                           file_name=storage.download_filename(h),
+                           mime="application/json", key=wkey("dl_side"),
+                           use_container_width=True)
 
-        with st.expander("Import / export a plan file", expanded=False):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.download_button(
-                    "⬇️ Download this plan",
-                    data=storage.to_download_bytes(h),
-                    file_name=storage.download_filename(h),
-                    mime="application/json", key=wkey(f"dl_{page_key}"),
-                    use_container_width=True)
-                st.caption("Plain JSON on your own machine. Nothing is uploaded "
-                           "anywhere. **On a hosted deployment this is the only "
-                           "storage that survives a restart** — download before "
-                           "you close the tab.")
-            with c2:
-                up = st.file_uploader("⬆️ Load a plan file", type=["json"],
-                                      key=wkey(f"ul_{page_key}"))
-                if up is not None:
-                    try:
-                        set_household(storage.from_upload_bytes(up.getvalue()))
-                        st.rerun()
-                    except (ValueError, UnicodeDecodeError) as e:
-                        st.error(f"That file could not be read: {e}")
-
-            if slots:
-                st.divider()
-                d1, d2 = st.columns([2, 1])
-                with d1:
-                    victim = st.selectbox("Delete a saved plan",
-                                          [s["name"] for s in slots],
-                                          key=wkey(f"del_{page_key}"))
-                with d2:
-                    st.write("")
-                    if st.button("Delete", key=wkey(f"delbtn_{page_key}"),
-                                 use_container_width=True):
-                        storage.delete_slot(victim)
-                        st.rerun()
+        with st.expander("📂  Open a plan", expanded=False):
+            _render_open_plan()
 
         if st.session_state.get(DIRTY_KEY):
-            st.caption("⚠️ You have unsaved changes.")
+            st.caption("⚠️ Unsaved changes — download before you close the tab.")
+
+        st.divider()
+        st.caption("An estimator, not advice. Military OneSource gives free "
+                   "counselling at 800-342-9647.")
 
     return h
 
 
-COMPACT_CSS = """
+def _render_open_plan() -> None:
+    """
+    Pick a file, then click a button. Nothing loads until you say so.
+
+    The uploader used to apply a file the instant it was selected, with no
+    confirmation and no way back if you picked the wrong one.
+    """
+    up = st.file_uploader("Choose a plan file", type=["json"],
+                          key=wkey("ul_side"),
+                          help="A .mpfplan.json file you downloaded earlier.")
+
+    ready = up is not None
+    if ready:
+        st.caption(f"Selected: **{up.name}**")
+    if st.button("Open this file", key=wkey("ulbtn_side"), type="primary",
+                 use_container_width=True, disabled=not ready):
+        try:
+            set_household(storage.from_upload_bytes(up.getvalue()))
+            st.rerun()
+        except (ValueError, UnicodeDecodeError) as e:
+            st.error(f"That file could not be read: {e}")
+
+    slots = storage.list_slots()
+    st.divider()
+    st.caption("**Saved on this machine.** These do not survive a restart on a "
+               "hosted deployment — download the file instead.")
+
+    save_as = st.text_input("Save as", value=get_household().profile_name,
+                            key=wkey("saveas_side"),
+                            label_visibility="collapsed",
+                            placeholder="Save under this name")
+    if st.button("💾  Save to this machine", key=wkey("save_side"),
+                 use_container_width=True):
+        try:
+            p = storage.save_slot(get_household(), save_as
+                                  or get_household().profile_name)
+            st.session_state[DIRTY_KEY] = False
+            st.success(f"Saved {p.name}", icon="✅")
+        except OSError as e:
+            st.error(f"Could not save: {e}")
+
+    if not slots:
+        return
+
+    picked = st.selectbox("Saved plans", [s["name"] for s in slots],
+                          key=wkey("load_side"), label_visibility="collapsed")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Open", key=wkey("loadbtn_side"), use_container_width=True):
+            try:
+                set_household(storage.load_slot(picked))
+                st.rerun()
+            except (OSError, ValueError) as e:
+                st.error(f"Could not open: {e}")
+    with c2:
+        if st.button("Delete", key=wkey("delbtn_side"), use_container_width=True):
+            storage.delete_slot(picked)
+            st.rerun()
+
+
+def render_save_load(page_key: str) -> Household:
+    """Backwards-compatible shim. The controls now live in the sidebar."""
+    return get_household()
+
+
+BASE_CSS = """
 <style>
-  /* Streamlit's defaults are generous with vertical space. On a page that is
-     mostly dense numeric input, that generosity turns into scrolling. */
-  .block-container {padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1400px;}
-  .block-container h1 {font-size: 1.9rem; margin-bottom: .15rem;}
-  .block-container h2 {font-size: 1.3rem; margin: .55rem 0 .3rem;}
-  .block-container h3 {font-size: 1.08rem; margin: .4rem 0 .25rem;}
-  .block-container h4 {font-size: .95rem; margin: .2rem 0 .35rem;
-                       text-transform: uppercase; letter-spacing: .04em;
-                       color: #5a6b73;}
-  div[data-testid="stVerticalBlockBorderWrapper"] {
-      background: #fbfcfc; border-radius: 8px;}
-  div[data-testid="stVerticalBlock"] {gap: .45rem;}
-  div[data-testid="stHorizontalBlock"] {gap: .7rem;}
-  div[data-testid="stMetric"] {padding: .1rem 0;}
-  div[data-testid="stMetricValue"] {font-size: 1.35rem;}
-  div[data-testid="stMetricLabel"] p {font-size: .78rem; color: #5a6b73;}
-  hr {margin: .7rem 0;}
-  div[data-testid="stCaptionContainer"] p {font-size: .8rem; line-height: 1.35;}
-  .stAlert {padding: .55rem .8rem;}
-  .stAlert p {margin-bottom: .25rem;}
+  /* ---- Density ------------------------------------------------------- */
+  .block-container {padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1500px;}
+  .block-container h1 {font-size: 1.7rem; margin-bottom: .1rem;}
+  .block-container h2 {font-size: 1.22rem; margin: .5rem 0 .25rem;}
+  .block-container h3 {font-size: 1.03rem; margin: .35rem 0 .2rem;}
+  .block-container h4 {font-size: .88rem; margin: .15rem 0 .3rem;
+                       text-transform: uppercase; letter-spacing: .045em;
+                       color: #55666f;}
+  div[data-testid="stVerticalBlock"] {gap: .38rem;}
+  div[data-testid="stHorizontalBlock"] {gap: .9rem;}
+  div[data-testid="stMetric"] {padding: .05rem 0;}
+  div[data-testid="stMetricValue"] {font-size: 1.28rem;}
+  div[data-testid="stMetricLabel"] p {font-size: .75rem; color: #55666f;}
+  hr {margin: .55rem 0;}
+  div[data-testid="stCaptionContainer"] p {font-size: .78rem; line-height: 1.35;}
+  .stAlert {padding: .5rem .75rem;}
+  .stAlert p {margin-bottom: .2rem;}
+
+  /* ---- Input widgets: visible against a white page ------------------- */
+  /* Streamlit 1.6x testids, with the older baseweb selectors kept so the
+     styling survives on whichever version a host installs. */
+  [data-testid="stTextInputRootElement"],
+  [data-testid="stNumberInputContainer"],
+  [data-testid="stDateInputField"],
+  [data-testid="stTextArea"] textarea,
+  [data-testid="stSelectbox"] div:has(> input[role="combobox"]),
+  div[data-baseweb="input"],
+  div[data-baseweb="select"] > div {
+      background-color: #ffffff !important;
+      border: 1px solid #9db0be !important;
+      border-radius: 6px !important;
+      box-shadow: 0 1px 1.5px rgba(16, 42, 60, .07) !important;
+  }
+  [data-testid="stTextInputRootElement"]:focus-within,
+  [data-testid="stNumberInputContainer"]:focus-within,
+  [data-testid="stSelectbox"] div:has(> input[role="combobox"]):focus-within {
+      border-color: #1f6f8b !important;
+      box-shadow: 0 0 0 2px rgba(31, 111, 139, .20) !important;
+  }
+  label[data-testid="stWidgetLabel"] p {
+      font-size: .79rem; font-weight: 600; color: #2f434e; margin-bottom: .08rem;}
+
+  /* ---- The input card ------------------------------------------------ */
+  /* A column of questions should read as one object, not as widgets loose
+     on a white page. Marked with .mpf-inputs so only these cards are tinted. */
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .mpf-inputs),
+  div[data-testid="stVerticalBlockBorderWrapper"]:has(.mpf-inputs):not(:has(div[data-testid="stVerticalBlockBorderWrapper"])) {
+      background: #dfe9f2 !important;
+      border: 1px solid #a3bacd !important;
+      border-radius: 9px;
+  }
+  .mpf-inputs {
+      font-size: .77rem; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: #33505f;
+      margin: -.1rem 0 .3rem; padding-bottom: .28rem;
+      border-bottom: 1px solid #bfd0dd;
+  }
+
+  /* ---- Sidebar ------------------------------------------------------- */
+  .mpf-brand {font-size: .98rem; font-weight: 700; line-height: 1.25;
+              color: #1f3d4c; margin: .1rem 0 .45rem;}
+  .mpf-side-head {font-size: .72rem; font-weight: 700; letter-spacing: .07em;
+                  text-transform: uppercase; color: #5c7280; margin-bottom: .2rem;}
+  section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {gap: .3rem;}
+  section[data-testid="stSidebar"] ul {margin-bottom: .3rem;}
 </style>
 """
 
+PINNED_CSS = """
+<style>
+  /* Pinned: the menu cannot be collapsed away by a stray click. */
+  section[data-testid="stSidebar"] {
+      transform: none !important; visibility: visible !important;
+      min-width: 17rem !important;}
+  div[data-testid="stSidebarCollapseButton"],
+  button[data-testid="stBaseButton-headerNoPadding"] {display: none !important;}
+  section[data-testid="stSidebar"]::after {
+      content: "📌"; position: absolute; top: .55rem; right: .6rem;
+      font-size: .8rem; opacity: .5;}
+</style>
+"""
+
+# Kept for pages that still import the old name.
+COMPACT_CSS = BASE_CSS
+
+
+def inject_css() -> None:
+    """Called once by the router, before any page runs."""
+    st.markdown(BASE_CSS, unsafe_allow_html=True)
+    if st.session_state.get(PIN_KEY):
+        st.markdown(PINNED_CSS, unsafe_allow_html=True)
+
 
 def page_header(title: str, subtitle: str = "") -> None:
-    st.markdown(COMPACT_CSS, unsafe_allow_html=True)
     st.title(title)
     if subtitle:
         st.caption(subtitle)
@@ -204,6 +306,41 @@ class section:
             st.markdown(f"#### {self.title}")
         if self.caption:
             st.caption(self.caption)
+        return self
+
+    def __exit__(self, *exc):
+        return self._ctx.__exit__(*exc)
+
+
+def two_pane(ratio=(1, 2.3), gap: str = "large"):
+    """
+    A narrow stacked column of inputs on the left, results on the right.
+
+    Three-across input rows looked tidy on a wide monitor and left most of the
+    page empty. Questions read better in one narrow column you work down; the
+    width belongs to the answers.
+
+        inputs, results = two_pane()
+        with inputs, input_card():
+            ...
+        with results:
+            ...
+    """
+    return st.columns(list(ratio), gap=gap)
+
+
+class input_card:
+    """The tinted panel that holds a stacked column of inputs."""
+
+    def __init__(self, title: str = "Your answers"):
+        self.title = title
+        self._ctx = None
+
+    def __enter__(self):
+        self._ctx = st.container(border=True)
+        self._ctx.__enter__()
+        st.markdown(f'<div class="mpf-inputs">{esc(self.title)}</div>',
+                    unsafe_allow_html=True)
         return self
 
     def __exit__(self, *exc):

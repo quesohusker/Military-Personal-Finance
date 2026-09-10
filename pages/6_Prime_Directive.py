@@ -2,81 +2,86 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import streamlit as st
-st.set_page_config(page_title="Prime Directive", page_icon="🧭", layout="wide")
 
-from ui.panel import (wkey, render_save_load, page_header, fmt_money, fmt_pct,
-                      esc, md_money)
+from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
+                      section, metric_row, fmt_money, fmt_pct, esc, md_money)
 from engine.coach import prime_directive as PD
 
-h = render_save_load("coach")
-page_header("🧭 Prime Directive",
+h = get_household()
+page_header("🧭 What to do with my next dollar",
             "Where your next dollar should go, in order, for your situation "
             "specifically — not a generic checklist.")
 
 r = PD.evaluate(h)
 
-# --------------------------------------------------------------------------
-top = st.columns([1, 1, 2])
-top[0].metric("Progress", f"{r.score:.0f}/100")
-top[1].metric("Steps complete", f"{r.completed} of {r.applicable}")
-with top[2]:
-    if r.current:
-        st.markdown("**Your next action**")
-        st.markdown(f"### {esc(r.current.title)}")
-    else:
-        st.success("Every applicable step is complete.", icon="🏆")
+inputs, results = two_pane()
 
-st.progress(min(1.0, r.score / 100.0))
-
-if r.current:
-    with st.container(border=True):
-        st.markdown(f"**{esc(r.current.action)}**")
-        if r.current.military_note:
-            st.caption(esc(r.current.military_note))
-
-st.markdown("---")
-st.markdown("## The full order")
-
-show_na = st.toggle("Show steps that do not apply to you", value=True,
-                    key=wkey("show_na"),
-                    help="Steps are marked not applicable with a reason. Those "
-                         "reasons are often the most useful thing on the page — "
-                         "they are where military rules diverge from the "
-                         "civilian advice you will read elsewhere.")
+# ==========================================================================
+# Left: the only thing there is to set on this page.
+# ==========================================================================
+with inputs:
+    with input_card("What to show"):
+        show_na = st.toggle("Show steps that do not apply to you", value=True,
+                            key=wkey("show_na"),
+                            help="Steps are marked not applicable with a reason. Those "
+                                 "reasons are often the most useful thing on the page — "
+                                 "they are where military rules diverge from the "
+                                 "civilian advice you will read elsewhere.")
 
 ICON = {PD.DONE: "✅", PD.IN_PROGRESS: "🔵", PD.NOT_STARTED: "⬜",
         PD.NOT_APPLICABLE: "➖"}
 LABEL = {PD.DONE: "Done", PD.IN_PROGRESS: "In progress",
          PD.NOT_STARTED: "Not started", PD.NOT_APPLICABLE: "Does not apply"}
 
-for s in r.steps:
-    if s.status == PD.NOT_APPLICABLE and not show_na:
-        continue
-    is_next = (r.current is not None and s.key == r.current.key)
-    with st.container(border=True):
-        head, badge = st.columns([5, 1])
-        with head:
-            marker = "  ← you are here" if is_next else ""
-            st.markdown(f"**{ICON[s.status]} {s.order}. {esc(s.title)}**{marker}")
-        with badge:
-            st.caption(LABEL[s.status])
+# ==========================================================================
+# Right: where you are, and the order itself.
+# ==========================================================================
+with results:
+    with section("Where you are"):
+        metric_row([("Progress", f"{r.score:.0f}/100"),
+                    ("Steps complete", f"{r.completed} of {r.applicable}")])
 
-        if s.status != PD.NOT_APPLICABLE and s.target > 0 and s.progress < 1:
-            st.progress(s.progress)
+        st.progress(min(1.0, r.score / 100.0))
 
-        st.markdown(esc(s.action))
+        if r.current:
+            st.markdown("**Your next action**")
+            st.markdown(f"### {esc(r.current.title)}")
+            with st.container(border=True):
+                st.markdown(f"**{esc(r.current.action)}**")
+                if r.current.military_note:
+                    st.caption(esc(r.current.military_note))
+        else:
+            st.success("Every applicable step is complete.", icon="🏆")
 
-        if s.status != PD.NOT_APPLICABLE and s.amount_needed > 0:
-            st.caption(f"Gap: {esc(fmt_money(s.amount_needed))}")
+    st.markdown("## The full order")
 
-        with st.expander("Why this step, and what is different for the military"):
-            st.markdown(f"**Why:** {esc(s.why)}")
-            if s.military_note:
-                st.markdown(f"**Military specifics:** {esc(s.military_note)}")
+    for s in r.steps:
+        if s.status == PD.NOT_APPLICABLE and not show_na:
+            continue
+        is_next = (r.current is not None and s.key == r.current.key)
+        with st.container(border=True):
+            head, badge = st.columns([5, 1])
+            with head:
+                marker = "  ← you are here" if is_next else ""
+                st.markdown(f"**{ICON[s.status]} {s.order}. {esc(s.title)}**{marker}")
+            with badge:
+                st.caption(LABEL[s.status])
 
-st.markdown("---")
-with st.expander("Where this differs from civilian advice, and why"):
-    st.markdown("""
+            if s.status != PD.NOT_APPLICABLE and s.target > 0 and s.progress < 1:
+                st.progress(s.progress)
+
+            st.markdown(esc(s.action))
+
+            if s.status != PD.NOT_APPLICABLE and s.amount_needed > 0:
+                st.caption(f"Gap: {esc(fmt_money(s.amount_needed))}")
+
+            with st.expander("Why this step, and what is different for the military"):
+                st.markdown(f"**Why:** {esc(s.why)}")
+                if s.military_note:
+                    st.markdown(f"**Military specifics:** {esc(s.military_note)}")
+
+    with st.expander("Where this differs from civilian advice, and why"):
+        st.markdown(esc("""
 The civilian financial order of operations is close to right, and wrong in five
 specific places. Each is worth money.
 
@@ -107,9 +112,9 @@ effectively do not face. Your case is PCS costs you float for months before
 reimbursement, spouse income stopping at every move, and DFAS recouping its own
 pay errors out of your paycheck. Three months is defensible while serving; move
 toward six as you approach separation, when job-loss risk becomes real.
-    """)
+    """))
 
-st.caption("Free, confidential financial counselling is available to you and "
-           "your family through Military OneSource at 800-342-9647, and through "
-           "your installation's Personal Financial Manager. Both are genuinely "
-           "good and cost nothing.")
+    st.caption("Free, confidential financial counselling is available to you and "
+               "your family through Military OneSource at 800-342-9647, and through "
+               "your installation's Personal Financial Manager. Both are genuinely "
+               "good and cost nothing.")
