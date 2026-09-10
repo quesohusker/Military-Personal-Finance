@@ -47,6 +47,24 @@ assumes housing and utilities cost **105% of BAH** unless you say otherwise.
 | **Retirement** | All four systems, the 20-year cliff, the BRS lump-sum trap |
 | **Survivor & VA** | SBP priced honestly, CRDP vs CRSC after tax |
 | **Residency & Education** | State of legal residence, GI Bill use vs transfer |
+| **Separation & Insurance** | Chapter 61 retirement vs severance, SGLI/VGLI vs term |
+
+## Sample plans
+
+Two ready-made plans live in `samples/`, for trying the app without typing a
+profile in:
+
+| File | Who |
+|---|---|
+| `e5_6yrs_brs.mpfplan.json` | E-5, 6 years, BRS, Fort Bragg, deployed to a combat zone, two consumer debts |
+| `retired_o5_26yrs.mpfplan.json` | Retired O-5, 26 years, High-3, 100% permanent and total, second career |
+
+Load one with **Import / export a plan file** at the top of any page. Every
+figure in them is a placeholder — replace them with your own LES, Retiree
+Account Statement and VA award letter.
+
+Regenerate them with `python scripts/make_sample_plans.py`; they are built
+through the app's own dataclasses, so they cannot drift from the schema.
 
 ## Rate data
 
