@@ -186,7 +186,13 @@ def render_save_load(page_key: str) -> Household:
 BASE_CSS = """
 <style>
   /* ---- Density ------------------------------------------------------- */
-  .block-container {padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1500px;}
+  /* Streamlit's fixed toolbar is 60px tall, opaque, and sits at the top of
+     the viewport at z-index 999990. Its own default padding-top is 6rem to
+     clear it. The density pass cut this to 1.5rem, which slid every page
+     title 30px UNDER the toolbar and shaved the tops off the letters.
+     4.5rem clears the toolbar with room to spare and is still a third
+     tighter than stock. */
+  .block-container {padding-top: 4.5rem; padding-bottom: 2rem; max-width: 1500px;}
   .block-container h1 {font-size: 1.7rem; margin-bottom: .1rem;}
   .block-container h2 {font-size: 1.22rem; margin: .5rem 0 .25rem;}
   .block-container h3 {font-size: 1.03rem; margin: .35rem 0 .2rem;}
