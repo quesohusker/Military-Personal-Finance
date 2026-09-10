@@ -86,7 +86,7 @@ pages/          Streamlit UI
 python -m pytest tests/ -q
 ```
 
-215 tests. The data-driven ones skip cleanly when rate tables are absent, so a
+214 tests. The data-driven ones skip cleanly when rate tables are absent, so a
 fresh clone passes either way.
 
 ## Scope
