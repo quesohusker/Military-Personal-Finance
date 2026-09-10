@@ -94,6 +94,80 @@ class Limits:
 # --------------------------------------------------------------------------
 # People
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Plan-wide sub-objects. Each is owned by one page and read by several; they
+# live here so a plan file carries them and an older file still loads.
+# --------------------------------------------------------------------------
+@dataclass
+class Assumptions:
+    """Every rate the projections use, in one place. Real terms throughout."""
+    inflation_pct: float = 2.5
+    real_return_pct: float = 4.0            # portfolio return above inflation
+    real_discount_rate_pct: float = 3.0     # for valuing guaranteed income
+    pay_raise_real_pct: float = 0.0         # military raises track ECI ~ CPI
+    cola_full: bool = True                  # REDUX members get CPI minus 1
+    tax_scenario: str = "Current law"       # Current law | TCJA sunset | Higher
+    planning_margin_years: int = 5          # plan past the median lifespan
+
+
+@dataclass
+class SocialSecurity:
+    """From the ssa.gov statement. Military earnings count in full."""
+    estimated_monthly_at_fra: float = 0.0
+    claim_age: int = 67
+    spouse_estimated_monthly_at_fra: float = 0.0
+    spouse_claim_age: int = 67
+    spouse_on_ssdi: bool = False
+    spouse_ssdi_monthly: float = 0.0
+
+
+@dataclass
+class Healthcare:
+    tricare_plan: str = "Prime"             # Prime | Select | Reserve Select | For Life
+    fedvip_dental_monthly: float = 0.0
+    ltc_premium_monthly: float = 0.0
+    part_b_when_eligible: bool = True       # TRICARE For Life requires it
+    out_of_pocket_annual: float = 0.0
+
+
+@dataclass
+class Housing:
+    owns_home: bool = False
+    mortgage_rate_pct: float = 0.0
+    mortgage_years_left: float = 0.0
+    is_va_loan: bool = False
+    used_va_entitlement_before: bool = False
+    annual_property_tax: float = 0.0
+    monthly_rent: float = 0.0
+    years_at_this_station: float = 3.0
+
+
+@dataclass
+class Estate:
+    has_will: bool = False
+    tsp_beneficiary_current: bool = False
+    sgli_beneficiary_current: bool = False
+    ira_beneficiary_current: bool = False
+    n_children: int = 0
+    annual_gift_per_child: float = 0.0
+    target_legacy_per_child: float = 0.0
+    gifting_start_year: int = 2026
+
+
+@dataclass
+class Investments:
+    """TSP allocation in percent; the five funds plus one lifecycle fund."""
+    tsp_g_pct: float = 0.0
+    tsp_f_pct: float = 0.0
+    tsp_c_pct: float = 0.0
+    tsp_s_pct: float = 0.0
+    tsp_i_pct: float = 0.0
+    tsp_lifecycle_fund: str = ""            # e.g. "L 2055"; blank = none
+    tsp_lifecycle_pct: float = 100.0
+    target_equity_pct: float = 80.0
+    taxable_equity_pct: float = 0.0
+
+
 @dataclass
 class ServiceMember:
     name: str = ""
@@ -166,6 +240,19 @@ class ServiceMember:
     # Civilian income (spouse, or a retiree's second career)
     civilian_wages_annual: float = 0.0
 
+    # Leaving the service (non-medical)
+    leave_balance_days: float = 0.0
+    planned_separation_date: str = ""       # ISO date; blank = not planned
+
+    # Guard and Reserve
+    retirement_points: int = 0
+
+    # Student loans
+    student_loan_balance: float = 0.0
+    student_loan_apr_pct: float = 0.0
+    student_loan_federal: bool = True
+    student_loan_incurred_before_service: bool = False
+
     @property
     def diems(self) -> date | None:
         try:
@@ -219,6 +306,13 @@ class Household:
     other_assets: float = 0.0
 
     debts: list = field(default_factory=list)
+
+    assumptions: Assumptions = field(default_factory=Assumptions)
+    social_security: SocialSecurity = field(default_factory=SocialSecurity)
+    healthcare: Healthcare = field(default_factory=Healthcare)
+    housing: Housing = field(default_factory=Housing)
+    estate: Estate = field(default_factory=Estate)
+    investments: Investments = field(default_factory=Investments)
 
     limits: Limits = field(default_factory=Limits)
     schema_version: int = 1
