@@ -328,8 +328,14 @@ def run_projection(
         for who, person in (("primary", p.primary), ("spouse", p.spouse if p.has_spouse else None)):
             if person is None or not alive[who]:
                 continue
-            if year <= person.work_through_year and person.annual_wages > 0:
-                yrs = max(0, year - start)
+            if year > person.work_through_year:
+                continue
+            yrs = max(0, year - start)
+            # The first year can be atypical -- a deployed member's CZTE pay
+            # never reaches a return -- so it is taken as given, ungrown.
+            if yrs == 0 and person.wages_first_year > 0:
+                wages += person.wages_first_year
+            elif person.annual_wages > 0:
                 wages += person.annual_wages * ((1.0 + person.wage_real_growth) ** yrs)
         row.wages = wages
 

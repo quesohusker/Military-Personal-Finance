@@ -143,12 +143,30 @@ with inputs:
                                  value=bool(d.skip_while_working), key=wkey("rc_skip"))
 
     with input_card("How long you will work, and live"):
-        wages = st.number_input("What taxable wages will you earn this year?",
+        wages = st.number_input("What taxable wages will you earn in a full year?",
                                 value=float(d.wages_annual), min_value=0.0,
                                 step=1_000.0, format="%.0f", key=wkey("rc_wages"),
                                 help="Basic pay and taxable special pays if you are "
                                      "still serving — BAH and BAS are not wages — plus "
-                                     "any civilian job. Retired pay is separate.")
+                                     "any civilian job. Retired pay is separate. This "
+                                     "is the figure carried forward to every year you "
+                                     "work, so it is a normal year, not a deployed one.")
+
+        # Only worth asking when the exclusion actually applies. Everyone else
+        # would be answering the same question twice.
+        wages_this_year = 0.0
+        if d.wages_this_year > 0:
+            wages_this_year = st.number_input(
+                "And this year, with combat-zone pay excluded?",
+                value=float(d.wages_this_year), min_value=0.0, step=1_000.0,
+                format="%.0f", key=wkey("rc_wages_czte"),
+                help="Pay earned in a combat zone never reaches a tax return, so a "
+                     "deployed year is far smaller than a normal one — and that "
+                     "makes it the cheapest year you will ever convert in. This "
+                     "figure is worked out from your grade and the months recorded "
+                     "on Profile; change it if the months are wrong, or set it "
+                     "equal to the figure above to ignore the exclusion. It applies "
+                     "to this year only.")
         work_through = st.number_input("What is the last year you will earn wages?",
                                        value=int(d.work_through_year),
                                        min_value=int(d.start_year - 1),
@@ -293,7 +311,8 @@ with inputs:
 # ==========================================================================
 ri = RB.RothInputs(
     start_year=d.start_year,
-    wages_annual=float(wages), work_through_year=int(work_through),
+    wages_annual=float(wages), wages_this_year=float(wages_this_year),
+    work_through_year=int(work_through),
     death_age=int(death_age),
     spouse_birth_year=int(spouse_birth), spouse_wages_annual=float(spouse_wages),
     spouse_work_through_year=int(spouse_work_through),

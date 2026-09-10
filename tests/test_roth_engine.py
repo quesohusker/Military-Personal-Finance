@@ -712,3 +712,132 @@ def test_briefing_reports_the_actual_volatility_assumption():
     assert "## Monte Carlo" in md
     assert "17.0%" in md
     assert "Real return standard deviation: 0.0%" not in md
+
+
+# ==========================================================================
+# The Combat Zone Tax Exclusion, and the first projected year
+#
+# The Roth engine used to model a deployed member at their full nominal wage.
+# Pay excluded under the CZTE never reaches a return, so that overstated
+# income in the one year it matters most: the deployed year is the cheapest
+# conversion window most members will ever get, and an overstated wage hides
+# it. The fix is a first-year-only figure -- a deployment ends, so carrying
+# the reduction forward for thirty years would be the opposite error.
+# ==========================================================================
+
+import sys as _sys, pathlib as _pathlib                                # noqa: E402
+_ROOT = _pathlib.Path(__file__).resolve().parent.parent
+_sys.path.insert(0, str(_ROOT))
+
+from engine import storage as _storage                                 # noqa: E402
+from engine.pay import taxable as _TP                                  # noqa: E402
+from engine.retirement import roth_bridge as _RB                       # noqa: E402
+
+_SAMPLE_E5 = _ROOT / "samples" / "e5_6yrs_brs.mpfplan.json"
+_SAMPLE_O5 = _ROOT / "samples" / "retired_o5_26yrs.mpfplan.json"
+
+
+def _load(path):
+    return _storage.from_upload_bytes(path.read_bytes())
+
+
+def test_an_enlisted_member_excludes_all_pay_for_every_month_in_the_zone():
+    """
+    Enlisted members and warrant officers have no cap: a qualifying month
+    excludes ALL military pay. Seven of twelve months leaves five twelfths.
+    """
+    h = _load(_SAMPLE_E5)
+    m = h.member
+    assert m.in_combat_zone and m.months_deployed_this_year == 7
+
+    before = _TP.compute(m).annual
+    after = _TP.annual_after_czte(m)
+
+    assert before == pytest.approx(49_320, abs=1)
+    assert after == pytest.approx(before * 5 / 12, abs=1)
+    assert after == pytest.approx(20_550, abs=1)
+
+
+def test_czte_wages_are_never_higher_than_the_wage_before_the_exclusion():
+    for path in (_SAMPLE_E5, _SAMPLE_O5):
+        m = _load(path).member
+        assert _TP.annual_after_czte(m) <= _TP.compute(m).annual + 1e-6
+
+
+def test_a_member_who_is_not_deployed_is_unaffected():
+    """The exclusion must not touch anyone it does not apply to."""
+    h = _load(_SAMPLE_E5)
+    m = h.member
+    m.in_combat_zone = False
+    assert _TP.czte_months(m) == 0
+    assert _TP.annual_after_czte(m) == pytest.approx(_TP.compute(m).annual)
+    assert _RB.default_inputs(h).wages_this_year == 0.0
+
+
+def test_the_bridge_carries_the_deployed_year_but_not_the_deployed_wage():
+    """
+    The reduction applies once. Later years must use the full wage, or a
+    seven-month deployment would model a thirty-year pay cut.
+    """
+    h = _load(_SAMPLE_E5)
+    i = _RB.default_inputs(h)
+    assert i.wages_this_year == pytest.approx(20_550, abs=1)
+    assert i.wages_annual == pytest.approx(49_320, abs=1)
+
+    p = _RB.to_roth_profile(h, i)
+    assert p.primary.wages_first_year == pytest.approx(20_550, abs=1)
+    assert p.primary.annual_wages == pytest.approx(49_320, abs=1)
+
+
+def test_the_projection_uses_the_reduced_wage_only_in_the_first_year():
+    h = _load(_SAMPLE_E5)
+    i = _RB.default_inputs(h)
+    p = _RB.to_roth_profile(h, i)
+    p.spouse = None
+    p.has_spouse = False
+    p.primary.wage_real_growth = 0.0
+
+    rows = run_projection(p, convert=False).rows
+    assert rows[0].wages == pytest.approx(20_550, abs=1)
+    assert rows[1].wages == pytest.approx(49_320, abs=1)
+    assert rows[2].wages == pytest.approx(49_320, abs=1)
+
+
+def test_the_deployed_year_is_taxed_less_than_it_used_to_be():
+    """
+    The regression this whole block exists for. Modelling the full wage made
+    the member pay tax on income that was never taxable.
+    """
+    h = _load(_SAMPLE_E5)
+    i = _RB.default_inputs(h)
+
+    fixed = run_projection(_RB.to_roth_profile(h, i), convert=False).rows[0]
+
+    i.wages_this_year = 0.0                       # what the old code did
+    buggy = run_projection(_RB.to_roth_profile(h, i), convert=False).rows[0]
+
+    assert fixed.wages < buggy.wages
+    assert fixed.total_tax < buggy.total_tax
+    # The whole exclusion, not a rounding difference.
+    assert buggy.wages - fixed.wages == pytest.approx(28_770, abs=1)
+
+
+def test_an_officer_in_the_zone_is_capped_and_an_enlisted_member_is_not():
+    """
+    Only commissioned officers are capped, at the highest enlisted basic pay
+    plus hostile fire pay. The cap is the difference between the two branches
+    of czte_monthly_exclusion, and it is easy to lose in a refactor.
+    """
+    h = _load(_SAMPLE_E5)
+    m = h.member
+    m.months_deployed_this_year = 12
+    m.in_combat_zone = True
+
+    m.grade = "E-7"
+    assert _TP.annual_after_czte(m) == pytest.approx(0.0, abs=1)
+
+    m.grade = "O-8"
+    m.basic_pay_monthly_override = 15_000.0
+    capped = _TP.annual_after_czte(m)
+    assert capped > 0, "an O-8 above the cap keeps taxable pay"
+    assert capped == pytest.approx((15_000.0 - 11_391.90) * 12, abs=1)

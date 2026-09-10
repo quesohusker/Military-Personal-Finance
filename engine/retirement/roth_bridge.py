@@ -143,6 +143,7 @@ class RothInputs:
 
     # Work and life
     wages_annual: float = 0.0
+    wages_this_year: float = 0.0     # 0 = same as wages_annual; see _member_wages
     work_through_year: int = 2026
     death_age: int = 90
     spouse_birth_year: int = 1975
@@ -267,10 +268,32 @@ def _planning_death_age(birth_year: int, sex: str, start_year: int,
 
 def _member_wages(m) -> float:
     """
-    Taxable wages this year: military basic pay and taxable special pays for
-    someone still serving (BAH and BAS are not wages), plus any civilian job.
+    Taxable wages in a NORMAL year: military basic pay and taxable special pays
+    for someone still serving (BAH and BAS are not wages), plus any civilian
+    job. This is the figure carried forward for every projected year.
+
+    It is deliberately before the Combat Zone Tax Exclusion. A deployment ends;
+    growing a reduced wage forward for thirty years would understate a career.
+    The current year is handled by _member_wages_this_year().
     """
     return float(TP.compute(m).annual + (m.civilian_wages_annual or 0.0))
+
+
+def _member_wages_this_year(m) -> float:
+    """
+    Taxable wages for the first projected year, with the CZTE applied.
+
+    Pay excluded in a combat zone never reaches a return. Modelling a deployed
+    member at their full nominal wage overstates income in the one year it
+    matters most: the low-tax year right after -- or during -- a deployment is
+    the cheapest conversion window most members will ever get, and overstating
+    the wage hides it.
+
+    Returns 0.0 when this year is ordinary, meaning "use the normal wage".
+    """
+    if not m.is_serving or TP.czte_months(m) == 0:
+        return 0.0
+    return float(TP.annual_after_czte(m) + (m.civilian_wages_annual or 0.0))
 
 
 def _member_contributions(m) -> tuple[float, float]:
@@ -347,6 +370,7 @@ def default_inputs(h: Household, start_year: int | None = None) -> RothInputs:
     return RothInputs(
         start_year=sy,
         wages_annual=_member_wages(m),
+        wages_this_year=_member_wages_this_year(m),
         work_through_year=_clamp(int(m.birth_year) + WAGES_STOP_AGE, sy, last_year),
         death_age=_planning_death_age(m.birth_year, m.sex, sy, margin),
         spouse_birth_year=spouse_birth,
@@ -412,6 +436,7 @@ def to_roth_profile(h: Household, inputs: RothInputs | None = None, *,
         name=m.name or "",
         birth_year=int(m.birth_year),
         annual_wages=float(i.wages_annual),
+        wages_first_year=float(i.wages_this_year),
         work_through_year=int(i.work_through_year),
         wage_real_growth=(float(a.pay_raise_real_pct) / 100.0 if m.is_serving else 0.0),
         ss_pia_monthly=float(ss.estimated_monthly_at_fra),
@@ -556,7 +581,11 @@ def describe(p: Profile) -> list[tuple[str, str]]:
                                + (" · CRDP" if mil.crdp_applies and mil.va_disability_monthly > 0 else "")),
         ("VA compensation (tax-free)", f"{money(mil.va_disability_monthly * 12)}/yr"
                                        + (f" · {mil.va_rating}%" if mil.va_rating else "")),
-        ("Wages this year", f"{money(p.primary.annual_wages)} through {p.primary.work_through_year}"
+        ("Wages this year",
+         (f"{money(p.primary.wages_first_year)} this year "
+          f"(combat-zone pay excluded), then "
+          if p.primary.wages_first_year > 0 else "")
+         + f"{money(p.primary.annual_wages)} through {p.primary.work_through_year}"
                             + (f"; spouse {money(p.spouse.annual_wages)} through "
                                f"{p.spouse.work_through_year}" if p.has_spouse else "")),
         ("Social Security at full retirement age",
