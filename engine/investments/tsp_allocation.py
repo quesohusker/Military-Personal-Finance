@@ -54,13 +54,18 @@ EQUITY_CODES = ("C", "S", "I")
 FIXED_CODES = ("G", "F")
 
 # Net expense ratios, in PERCENT of assets. See VERIFY["expense_ratios"].
-EXPENSE_RATIO_YEAR = 2024
+EXPENSE_RATIO_YEAR = 2026
+# CHECKED against tsp.gov/funds-individual (fetched 2026-09-10). Each fund is
+# identified by the index it tracks, which is how the page orders them:
+# G Treasury, F Bloomberg Aggregate, C S&P 500, S DJ Completion, I MSCI ACWI
+# IMI ex USA ex China ex Hong Kong. Every one came in BELOW the figure
+# carried here from recollection, by roughly a third for G.
 EXPENSE_RATIOS_PCT = {
-    "G": 0.057,
-    "F": 0.049,
-    "C": 0.037,
-    "S": 0.058,
-    "I": 0.055,
+    "G": 0.034,
+    "F": 0.035,
+    "C": 0.035,
+    "S": 0.051,
+    "I": 0.048,
 }
 
 # What the page quotes when it needs one number for "the TSP". A hair above
@@ -141,15 +146,17 @@ FUNDS: dict[str, Fund] = {
         "them."),
     "I": Fund(
         "I", "I Fund — International Stock Index",
-        "Developed and emerging markets outside the US and Canada.", True,
+        "Developed and emerging markets outside the US, less China and "
+        "Hong Kong.", True,
         EXPENSE_RATIOS_PCT["I"],
         "Read this if you last looked at the I Fund before 2024. It tracked "
         "the MSCI EAFE index for its whole life — developed markets only, no "
         "emerging markets, no Canada. The benchmark was changed to a broader "
-        "all-country ex-US ex-China index, so an I Fund holding now includes "
-        "emerging markets it did not include before. If you sized this "
-        "position on the old fund, you are holding something different from "
-        "what you bought."),
+        "all-country index -- MSCI ACWI IMI ex USA ex China ex Hong Kong -- "
+        "so an I Fund holding now includes emerging markets it did not "
+        "include before, and deliberately excludes China and Hong Kong. If "
+        "you sized this position on the old fund, you are holding something "
+        "different from what you bought."),
 }
 
 

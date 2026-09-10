@@ -71,7 +71,9 @@ EITC_2026 = {
     # AGI (or earned income, whichever is greater) at which the phase-out begins.
     "phaseout_threshold": {
         T.SINGLE: {0: 10_860, 1: 23_890, 2: 23_890, 3: 23_890},        # VERIFY
-        T.MFJ:    {0: 18_130, 1: 31_160, 2: 31_160, 3: 31_160},        # VERIFY
+        # CHECKED against Rev. Proc. 2025-32 s4.06, table at p.15. The
+        # childless MFJ threshold is 18,140; it was carried as 18,130.
+        T.MFJ:    {0: 18_140, 1: 31_160, 2: 31_160, 3: 31_160},
     },
     "investment_income_limit": 12_200,                                 # VERIFY
     # Without a qualifying child the claimant must be 25 to 64.
