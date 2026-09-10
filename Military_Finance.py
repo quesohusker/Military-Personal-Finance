@@ -29,11 +29,14 @@ MENU = {
         _page("pages/0_Overview.py", "Overview", "🎖️", default=True),
         _page("pages/12_Upload_LES.py", "Read my LES or RAS", "📄"),
         _page("pages/13_Upload_Statement.py", "Read a bank or brokerage statement", "🏦"),
+        _page("pages/17_Assumptions.py", "What should we assume?", "🎛️"),
+        _page("pages/22_This_Years_Taxes.py", "What will this year's tax return look like?", "🧾"),
         _page("pages/1_Profile.py", "Who I am", "👤"),
         _page("pages/2_Pay.py", "What I actually get paid", "💵"),
         _page("pages/4_Assets_and_Debts.py", "What I am worth", "🏦"),
     ],
     "Decisions I make now": [
+        _page("pages/14_Roth_Conversions.py", "Should I convert to Roth?", "🔁"),
         _page("pages/6_Prime_Directive.py", "What to do with my next dollar", "🧭"),
         _page("pages/5_Debt_Payoff.py", "Getting out of debt", "💳"),
         _page("pages/10_Residency_and_Education.py",
@@ -49,6 +52,8 @@ MENU = {
         _page("pages/8_Retirement.py", "Do I stay to twenty?", "🎖️"),
         _page("pages/11_Separation_and_Insurance.py",
               "If I am medically separated", "⚕️"),
+        _page("pages/15_Social_Security.py", "When do I claim Social Security?", "🧓"),
+        _page("pages/16_Healthcare.py", "What will healthcare cost me?", "🏥"),
         _page("pages/9_Survivor_and_VA.py", "Survivors, SBP and the VA", "🛡️"),
     ],
 }
