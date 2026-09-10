@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 .streamlit-run.pid
 .streamlit-run.log
+
+# Raw agency downloads: archived for checking figures, not source.
+data/_gov_raw/
