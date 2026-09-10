@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# Manage a local install of the Military Personal Finance.
+# Manage a local install of Military Personal Finance.
 #
-#   ./roth.sh update    pull the latest from GitHub, refresh deps, restart
-#   ./roth.sh start     start the app in the background
-#   ./roth.sh stop      stop it
-#   ./roth.sh restart   stop, then start
-#   ./roth.sh status    is it running, on what port, at what commit
-#   ./roth.sh test      run the test suite
-#   ./roth.sh push "message"
+#   ./mpf.sh update    pull the latest from GitHub, refresh deps, restart
+#   ./mpf.sh start     start the app in the background
+#   ./mpf.sh stop      stop it
+#   ./mpf.sh restart   stop, then start
+#   ./mpf.sh status    is it running, on what port, at what commit
+#   ./mpf.sh test      run the test suite
+#   ./mpf.sh push "message"
 #                       commit and push your local changes to GitHub
 #
 # Your saved plans live in saved_plans/ and are git-ignored, so nothing here
@@ -20,7 +20,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENTRY="Military_Finance.py"
-PORT="${ROTH_PORT:-8501}"
+PORT="${MPF_PORT:-8501}"
 VENV="$APP_DIR/.venv"
 PY="$VENV/bin/python3"
 PIDFILE="$APP_DIR/.streamlit-run.pid"
@@ -60,6 +60,15 @@ install_deps() {
     "$PY" -m pip install --quiet --upgrade -r "$APP_DIR/requirements.txt" \
         || die "Dependency install failed. Check your network and retry."
     ok "Dependencies up to date"
+}
+
+# Does this pid belong to THIS app, rather than some other Streamlit project?
+is_our_process() {
+    cmd="$(ps -p "$1" -o command= 2>/dev/null || true)"
+    case "$cmd" in
+        *"$ENTRY"*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 running_pid() {
@@ -118,6 +127,17 @@ do_start() {
 
     pid="$(running_pid || true)"
     if [ -n "$pid" ]; then
+        # A busy port is not proof that WE are on it. Another Streamlit app --
+        # commonly a second project of your own -- looks identical from here,
+        # and reporting it as "already running" sends you to a page that is not
+        # this app.
+        if ! is_our_process "$pid"; then
+            die "Port $PORT is in use by another program (pid $pid):
+       $(ps -p "$pid" -o command= 2>/dev/null | cut -c1-100)
+
+       That is not this app. Either stop it, or start this one elsewhere:
+         MPF_PORT=8502 ./mpf.sh start"
+        fi
         warn "Already running on port $PORT (pid $pid). Use restart."
         return 0
     fi
@@ -125,7 +145,7 @@ do_start() {
     say "Starting on port $PORT"
     # Detach all three streams. Without "< /dev/null" and the subshell's own
     # redirect, the background server inherits this script's stdout -- so
-    # "./roth.sh update | tail" would hang forever waiting for a pipe that the
+    # "./mpf.sh update | tail" would hang forever waiting for a pipe that the
     # server holds open for as long as it runs.
     ( cd "$APP_DIR" && nohup "$VENV/bin/streamlit" run "$ENTRY" \
         --server.port "$PORT" --server.headless true \
@@ -156,7 +176,7 @@ do_update() {
 
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
         die "You have uncommitted changes. Commit them first:
-       ./roth.sh push \"what you changed\"
+       ./mpf.sh push \"what you changed\"
        ...or discard them:  git checkout -- ."
     fi
 
@@ -180,7 +200,7 @@ do_update() {
 
     if [ "$branch" != "main" ]; then
         warn "You are on '$branch', not main. To follow the released version:"
-        warn "  git checkout main && ./roth.sh update"
+        warn "  git checkout main && ./mpf.sh update"
     fi
 
     ensure_python
@@ -217,7 +237,7 @@ do_status() {
         if git rev-parse --verify -q "origin/$branch" >/dev/null; then
             behind="$(git rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)"
             if [ "$behind" -gt 0 ]; then
-                warn "$behind new commit(s) on GitHub. Run: ./roth.sh update"
+                warn "$behind new commit(s) on GitHub. Run: ./mpf.sh update"
             else
                 ok "Up to date with GitHub"
             fi
@@ -231,7 +251,7 @@ do_status() {
 do_push() {
     cd "$APP_DIR"
     msg="${1:-}"
-    [ -n "$msg" ] || die "Give a commit message:  ./roth.sh push \"what you changed\""
+    [ -n "$msg" ] || die "Give a commit message:  ./mpf.sh push \"what you changed\""
 
     if [ -z "$(git status --porcelain)" ]; then
         ok "Nothing to commit"
@@ -273,5 +293,5 @@ case "${1:-}" in
     ""|help|-h|--help)
         awk 'NR>2 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
         ;;
-    *) die "Unknown command: $1  (run ./roth.sh help)" ;;
+    *) die "Unknown command: $1  (run ./mpf.sh help)" ;;
 esac
