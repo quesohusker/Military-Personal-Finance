@@ -245,15 +245,18 @@ def test_the_retiree_sample_answer_is_stable():
     # extra year moved the case for converting by half. Longer life means more
     # RMD years, so leaving the balance alone costs more -- the conversion
     # advantage grew from $28,954 to $43,482 on that single year.
-    assert base.lifetime_total_tax == pytest.approx(2_135_635.09, rel=1e-6)
-    assert conv.lifetime_total_tax == pytest.approx(2_146_035.29, rel=1e-6)
-    assert base.heir_value_total == pytest.approx(11_402_336.19, rel=1e-6)
-    assert conv.heir_value_total == pytest.approx(11_445_818.30, rel=1e-6)
+    # Re-pinned again when the published IRMAA tiers replaced the derived
+    # ones: a Part B premium a dime different in three tiers, compounded
+    # over 30 years of two people, moves lifetime tax by about $1,000.
+    assert base.lifetime_total_tax == pytest.approx(2_136_682.63, rel=1e-6)
+    assert conv.lifetime_total_tax == pytest.approx(2_147_058.82, rel=1e-6)
+    assert base.heir_value_total == pytest.approx(11_400_863.36, rel=1e-6)
+    assert conv.heir_value_total == pytest.approx(11_444_034.89, rel=1e-6)
     assert base.ending_traditional == pytest.approx(1_964_667.09, rel=1e-6)
-    assert conv.ending_traditional == pytest.approx(524_187.38, rel=1e-6)
+    assert conv.ending_traditional == pytest.approx(524_182.89, rel=1e-6)
     assert base.lifetime_rmds == pytest.approx(1_546_478.90, rel=1e-6)
-    assert conv.lifetime_rmds == pytest.approx(412_611.74, rel=1e-6)
-    assert conv.lifetime_conversions == pytest.approx(1_398_630.56, rel=1e-6)
+    assert conv.lifetime_rmds == pytest.approx(412_608.22, rel=1e-6)
+    assert conv.lifetime_conversions == pytest.approx(1_398_635.30, rel=1e-6)
 
     # Converting costs this household MORE tax in life and still wins, because
     # what it saves is the tax the heirs would have paid.

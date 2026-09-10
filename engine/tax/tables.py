@@ -134,22 +134,36 @@ NIIT_THRESHOLD = {MFJ: 250_000, SINGLE: 200_000}
 # --------------------------------------------------------------------------
 IRMAA_PART_B_STANDARD = 202.90  # monthly, 2026 standard premium
 
+# CHECKED 2026-09-10 against ssa.gov's Medicare Premiums page (browser save;
+# ssa.gov refuses automated requests). Part B is the standard premium plus a
+# surcharge of 81.20 / 202.90 / 324.60 / 446.30 / 487.00. The Part D column
+# here had been the 2025 amounts -- 13.70 through 85.80 re-derive exactly from
+# a 2025 base beneficiary premium, which is how the staleness showed up.
 IRMAA_TIERS_2026 = {
     MFJ: [
         (218_000, 202.90, 0.00),
-        (274_000, 284.10, 13.70),
-        (342_000, 405.90, 35.30),
-        (410_000, 527.50, 57.00),
-        (750_000, 649.30, 78.60),
-        (float("inf"), 690.00, 85.80),
+        (274_000, 284.10, 14.50),
+        (342_000, 405.80, 37.50),
+        (410_000, 527.50, 60.40),
+        (750_000, 649.20, 83.30),
+        (float("inf"), 689.90, 91.00),
     ],
     SINGLE: [
         (109_000, 202.90, 0.00),
-        (137_000, 284.10, 13.70),
-        (171_000, 405.90, 35.30),
-        (205_000, 527.50, 57.00),
-        (500_000, 649.30, 78.60),
-        (float("inf"), 690.00, 85.80),
+        (137_000, 284.10, 14.50),
+        (171_000, 405.80, 37.50),
+        (205_000, 527.50, 60.40),
+        (500_000, 649.20, 83.30),
+        (float("inf"), 689.90, 91.00),
+    ],
+    # Married filing separately gets its own two-step schedule, and its top
+    # surcharge is 487.90 rather than the 487.00 every other status pays.
+    # Not modelled elsewhere in the app; recorded so it is not re-derived
+    # wrongly from the joint figures.
+    "MFS_2026": [
+        (109_000, 202.90, 0.00),
+        (391_000, 649.20, 83.30),
+        (float("inf"), 690.80, 91.00),
     ],
 }
 

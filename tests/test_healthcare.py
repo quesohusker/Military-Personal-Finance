@@ -531,7 +531,11 @@ def test_every_figure_carries_a_verify_note():
     assert set(HC.FIGURES) - {"year"} == set(HC.VERIFY)
     for key, note in HC.VERIFY.items():
         assert note.strip().endswith(".")
-        assert ("VERIFY at" in note or "Statutory" in note
+        # "CHECKED <date> against <source>" is the strongest of these: the
+        # figure has been read off the publisher rather than recalled.
+        # See docs/VERIFIED.md.
+        assert ("CHECKED" in note or "VERIFY at" in note
+                or "Statutory" in note
                 or "ESTIMATE" in note), f"{key}: says where it came from"
 
 

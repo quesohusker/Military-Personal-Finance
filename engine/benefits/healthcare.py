@@ -69,7 +69,11 @@ FIGURES = {
     #      from the return filed two years earlier. Per person, monthly.
     "irmaa_ceilings_single": [109_000.0, 137_000.0, 171_000.0, 205_000.0, 500_000.0],
     "irmaa_ceilings_joint": [218_000.0, 274_000.0, 342_000.0, 410_000.0, 750_000.0],
-    "irmaa_part_b_monthly": [202.90, 284.10, 405.90, 527.50, 649.30, 690.00],
+    # CHECKED against ssa.gov Medicare Premiums (browser save, 2026-09-10).
+    # Published as the standard premium plus a surcharge of 81.20, 202.90,
+    # 324.60, 446.30, 487.00. Three tiers were a dime high when derived
+    # from the statutory cost shares instead.
+    "irmaa_part_b_monthly": [202.90, 284.10, 405.80, 527.50, 649.20, 689.90],
     "irmaa_part_d_monthly": [0.00, 14.50, 37.50, 60.40, 83.30, 91.00],
     "irmaa_lookback_years": 2,
     "part_b_late_penalty_per_year": 0.10,
@@ -117,18 +121,18 @@ VERIFY = {
     "part_b_deductible_annual":
         "VERIFY at cms.gov: 2026 Part B annual deductible. Confidence HIGH.",
     "irmaa_ceilings_single":
-        "VERIFY at cms.gov / ssa.gov: 2026 IRMAA MAGI brackets, single filer, "
+        "CHECKED 2026-09-10 against ssa.gov. 2026 IRMAA MAGI brackets, single, "
         "based on the 2024 return. Confidence HIGH; matches engine/tax/tables.py.",
     "irmaa_ceilings_joint":
-        "VERIFY at cms.gov / ssa.gov: 2026 IRMAA MAGI brackets, married filing "
+        "CHECKED 2026-09-10 against ssa.gov. IRMAA MAGI brackets, married filing "
         "jointly. Confidence HIGH; matches engine/tax/tables.py.",
     "irmaa_part_b_monthly":
-        "VERIFY at cms.gov: 2026 Part B total premium by IRMAA tier. "
+        "CHECKED 2026-09-10 against ssa.gov. 2026 Part B total premium by "
         "Confidence HIGH; matches engine/tax/tables.py, and each tier is the "
         "statutory share of the $811.60 total cost implied by the standard "
         "premium (25/35/50/65/80/85 percent), which all six figures satisfy.",
     "irmaa_part_d_monthly":
-        "VERIFY at cms.gov: 2026 Part D income-related adjustment by tier. "
+        "CHECKED 2026-09-10 against ssa.gov, exact. 2026 Part D "
         "Confidence MEDIUM-HIGH. Each tier is (share - 25.5%) / 25.5% times "
         "the national base beneficiary premium, and all five reproduce to the "
         "cent from a 2026 base of $38.99 -- so they are right if that base is. "

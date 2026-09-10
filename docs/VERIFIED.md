@@ -23,6 +23,10 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 | TSP expense ratios | `tsp_expense_ratios` | **CORRECTED** | G 0.034, F 0.035, C 0.035, S 0.051, I 0.048 percent. Every one was carried HIGHER than published -- G by nearly half. |
 | TSP I Fund index | `tsp_expense_ratios` | **CORRECTED** | MSCI ACWI IMI ex USA ex China ex Hong Kong. The exclusion of China and Hong Kong was missing from the description. |
 | SSA period life table | browser save | **INSTALLED** | 120 ages, both sexes, through the importer's shape checks. `is_authoritative()` now returns True. The approximation it replaces ran two years SHORT at every age under 60. |
+| Part B IRMAA tiers | browser save, ssa.gov | **CORRECTED** | Published as the standard premium plus 81.20 / 202.90 / 324.60 / 446.30 / 487.00. Three tiers were a dime high when derived from the statutory cost shares: 405.80 not 405.90, 649.20 not 649.30, 689.90 not 690.00. |
+| Part D IRMAA tiers | browser save, ssa.gov | **CONFIRMED / CORRECTED** | 0 / 14.50 / 37.50 / 60.40 / 83.30 / 91.00. `healthcare.py` had these exactly right. `engine/tax/tables.py` was carrying the 2025 amounts (13.70 through 85.80) and is now fixed. |
+| IRMAA MAGI brackets | browser save, ssa.gov | **CONFIRMED** | 109 / 137 / 171 / 205 / 500k single, double that joint except the top at 750k. |
+| IRMAA, married filing separately | browser save, ssa.gov | **RECORDED** | Its own two-step schedule, and its top surcharge is 487.90 rather than the 487.00 every other status pays. Not modelled; recorded so it is not re-derived wrongly. |
 | TSP L Fund lineup | `tsp_lifecycle_funds` | **CONFIRMED** | L Income and L 2030 through L 2075 in five-year steps. L 2075 was rated LOW confidence on the grounds it might not exist yet. It does. |
 
 ## Source files
@@ -45,26 +49,23 @@ Fetched 2026-09-10. Nothing below was taken from memory.
 
 ## Still unverified
 
-SSA, DFAS and DTMO refuse every automated request -- a bot filter that
-neither a full browser header set nor curl's different TLS handshake gets
-past. TRICARE returns a JavaScript shell. What that leaves outstanding, in
-the order it changes an answer:
+SSA, DFAS and DTMO refuse every automated request. TRICARE returns a
+JavaScript shell. What is left, in the order it changes an answer:
 
-1. **The Part B IRMAA brackets.** The standard premium and deductible are
-   confirmed; the six income tiers are not. They are what makes a Roth
-   conversion cost more two years later, so the healthcare page's central
-   argument rests on them. Note also that `engine/tax/tables.py` carries Part
-   D IRMAA figures that re-derive from a 2025 base premium -- last year's.
-2. **The SSA PIA bend points.** Everything the Social Security page estimates
+1. **The SSA PIA bend points.** Everything the Social Security page estimates
    for someone without a statement scales directly with these two numbers.
-3. **TRICARE enrolment fees and the catastrophic cap.** The retiree lifetime
+2. **TRICARE enrolment fees and the catastrophic cap.** The retiree lifetime
    figure is dominated by Part B, so these move the total by a few percent.
-4. **BAS.** Small, but it is in every pay calculation, and the original brief
+   Print to PDF -- the page builds itself in JavaScript and Save As returns
+   an empty shell.
+3. **BAS.** Small, but it is in every pay calculation, and the original brief
    for this project had the enlisted and officer rates backwards.
+4. **DFAS pay tables and the DTMO BAH archive.** Both already installed for
+   2026 from files downloaded by hand earlier, so this is only the annual
+   refresh.
 
 `python3 scripts/fetch_gov_data.py --manual` prints the list with the saving
-instructions each one needs. Save the SSA pages as **Page Source**; TRICARE
-builds itself in JavaScript, so use Print to PDF there.
+instructions each one needs.
 
 ## What one year of life expectancy was worth
 
