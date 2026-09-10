@@ -90,18 +90,25 @@ def parse_zip_mha(text: str) -> dict[str, str]:
 
 
 def parse_mha_names(text: str) -> dict[str, str]:
-    """`mhanames{YY}.txt` -- MHA code then display name, comma or tab separated."""
+    """
+    `mhanames{YY}.txt` -- MHA code then display name.
+
+    DTMO uses a SEMICOLON here, not a comma, because the names themselves
+    contain commas ("AK400;KETCHIKAN, AK"). Splitting on comma first would cut
+    the name in half and leave the state as a separate field.
+    """
     out = {}
     for line in text.splitlines():
         line = line.rstrip()
         if not line:
             continue
-        for sep in ("\t", ","):
+        for sep in (";", "\t", "|"):
             if sep in line:
                 code, _, name = line.partition(sep)
                 out[code.strip().upper()] = name.strip().strip('"')
                 break
         else:
+            # No delimiter found: assume "CODE Name of place".
             parts = line.split(None, 1)
             if len(parts) == 2:
                 out[parts[0].strip().upper()] = parts[1].strip()

@@ -29,13 +29,27 @@ from engine.pay import bah  # noqa: E402
 from engine.pay import grades as G  # noqa: E402
 
 
-def _pick(names: list[str], *fragments: str) -> str | None:
-    """Find the archive member whose name contains all fragments."""
-    for n in names:
-        low = n.lower()
-        if all(f in low for f in fragments):
-            return n
-    return None
+def _pick(names: list[str], *fragments: str, exclude: tuple = ()) -> str | None:
+    """
+    Find the archive member whose name contains all fragments.
+
+    The DTMO archive ships superseded copies alongside the current ones -- both
+    "bahw26.txt" and "bahw26 - old.txt", and .dat duplicates of each. The old
+    files hold DIFFERENT rates, so picking one silently installs last
+    revision's numbers. Exclude them, and prefer .txt over .dat.
+    """
+    candidates = [
+        n for n in names
+        if all(f in n.lower() for f in fragments)
+        and not any(x in n.lower() for x in exclude)
+        and "old" not in n.lower()
+        and not n.lower().endswith(".pdf")
+    ]
+    if not candidates:
+        return None
+    # Prefer .txt, then the shortest name (the canonical one has no suffix).
+    candidates.sort(key=lambda n: (not n.lower().endswith(".txt"), len(n)))
+    return candidates[0]
 
 
 # DoD web servers reject requests that do not look like a browser. A bare
@@ -102,12 +116,12 @@ def build(year: int, blob: bytes) -> bah.BAHData:
         return zf.read(member).decode("utf-8", errors="replace")
 
     zip_member = _pick(names, "zipmha")
-    with_member = _pick(names, "bahw") if not _pick(names, "bahwo") else None
-    # bahw and bahwo both contain "bahw"; disambiguate explicitly.
-    with_member = next((n for n in names
-                        if "bahw" in n.lower() and "bahwo" not in n.lower()), None)
-    without_member = next((n for n in names if "bahwo" in n.lower()), None)
+    # "bahw" is a prefix of "bahwo", so the with-dependents file must exclude it.
+    with_member = _pick(names, "bahw", exclude=("bahwo",))
+    without_member = _pick(names, "bahwo")
     names_member = _pick(names, "mhanames") or _pick(names, "mha", "name")
+
+    print(f"  Using: {with_member}, {without_member}, {zip_member}, {names_member}")
 
     missing = [label for label, m in
                (("ZIP-to-MHA", zip_member), ("with-dependents rates", with_member),

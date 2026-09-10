@@ -272,3 +272,101 @@ def test_sanity_check_passes_a_well_formed_table():
                     with_dependents={f"M{i:03d}": good["TX290"] for i in range(300)},
                     without_dependents={f"M{i:03d}": lower["TX290"] for i in range(300)})
     assert sanity_check(d) == []
+
+
+# ==========================================================================
+# Regression tests against the real installed BAH dataset
+#
+# These skip cleanly when no data is installed, so a fresh clone still passes.
+# When data IS present they check structural invariants across every MHA, not
+# a handful of samples -- a column misalignment shows up as a violation
+# somewhere even when the sampled rows look fine.
+# ==========================================================================
+
+real = pytest.mark.skipif(bah.load() is None,
+                          reason="No BAH data installed; run scripts/refresh_bah.py")
+
+
+@real
+def test_real_data_has_the_expected_scale():
+    d = bah.load()
+    assert 30_000 < d.n_zips < 50_000
+    assert 250 < d.n_mhas < 500
+
+
+@real
+def test_real_data_senior_grades_outearn_junior_everywhere():
+    """A shifted rate column shows up here even when spot checks look fine."""
+    d = bah.load()
+    for mha, row in d.with_dependents.items():
+        assert row["E01"] <= row["E09"], mha
+        assert row["E09"] <= row["O06"], mha
+        assert row["O03"] <= row["O06"], mha
+
+
+@real
+def test_real_data_prior_enlisted_officers_are_paid_more():
+    """O-1E above O-1 is the sharpest confirmation the columns are aligned."""
+    d = bah.load()
+    for mha, row in d.with_dependents.items():
+        assert row["O01E"] >= row["O01"], mha
+        assert row["O02E"] >= row["O02"], mha
+        assert row["O03E"] >= row["O03"], mha
+
+
+@real
+def test_real_data_dependents_never_reduce_the_rate():
+    d = bah.load()
+    for mha, row in d.with_dependents.items():
+        without = d.without_dependents[mha]
+        for code, rate in row.items():
+            assert without[code] <= rate + 0.01, f"{mha} {code}"
+
+
+@real
+def test_real_data_junior_enlisted_share_one_rate():
+    """BAH pays E-1 through E-4 the same in every MHA."""
+    d = bah.load()
+    for mha, row in d.with_dependents.items():
+        assert len({row["E01"], row["E02"], row["E03"], row["E04"]}) == 1, mha
+
+
+@real
+def test_real_data_rates_are_in_a_plausible_range():
+    d = bah.load()
+    rates = [v for row in d.with_dependents.values() for v in row.values()]
+    assert 500 < min(rates) < 2_000
+    assert 5_000 < max(rates) < 15_000
+
+
+@real
+def test_real_data_high_cost_areas_beat_low_cost_areas():
+    """Sanity against the actual housing market, not just internal consistency."""
+    d = bah.load()
+    san_diego = bah.lookup("92134", "E-5", True, d)
+    fort_sill = bah.lookup("73503", "E-5", True, d)
+    assert san_diego.found and fort_sill.found
+    assert san_diego.monthly > fort_sill.monthly * 1.5
+
+
+@real
+def test_real_data_mha_names_survived_the_comma_in_them():
+    """
+    Names are semicolon-delimited because they contain commas ("KETCHIKAN, AK").
+    A comma-first parser truncates every one of them.
+    """
+    d = bah.load()
+    named = [n for n in d.mha_names.values() if n]
+    assert len(named) > 300
+    assert any("," in n for n in named), "state suffixes were stripped"
+    r = bah.lookup("78234", "E-5", True, d)
+    assert "SAN ANTONIO" in r.mha_name.upper()
+    assert "TX" in r.mha_name.upper()
+
+
+@real
+def test_real_data_every_mha_carries_all_27_grades():
+    d = bah.load()
+    expected = set(bah.BAH_COLUMN_ORDER)
+    for mha, row in d.with_dependents.items():
+        assert set(row) == expected, mha
