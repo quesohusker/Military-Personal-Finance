@@ -11,6 +11,7 @@ from engine.profile import (COMPONENTS, SERVING, ACTIVE, RETIRED,
                             retirement_system_for_diems, has_tsp_match,
                             SYS_BRS, SYS_REDUX, DIEMS_BRS_START)
 from engine.pay import grades as G
+from engine import mortality as MORT
 
 h = get_household()
 m = h.member
@@ -39,6 +40,12 @@ with inputs:
                key=wkey("tig"), min_value=0.0, max_value=30.0, step=0.5)
         integer("What year were you born?", m, "birth_year", key=wkey("by"),
                 min_value=1930, max_value=2010)
+        choice("Which sex should we use for life expectancy?", m, "sex",
+               MORT.SEXES, key=wkey("sex"),
+               format_func=lambda v: v or "Prefer not to say",
+               help="Only used to pick a mortality table for the pension, SBP "
+                    "and insurance pages. About three years separates the two. "
+                    "Leave it unset and the app uses the midpoint.")
 
     with input_card("When you first joined"):
         text("What is your DIEMS date? (YYYY-MM-DD)", m, "diems_date", key=wkey("diems"),

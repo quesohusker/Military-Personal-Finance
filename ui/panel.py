@@ -236,11 +236,13 @@ BASE_CSS = """
       border: 1px solid #a3bacd !important;
       border-radius: 9px;
   }
+  /* No rule under the title: the card tint already groups the fields, and the
+     negative top margin this used to carry made the border render underneath
+     the first widget's label rather than above it. */
   .mpf-inputs {
       font-size: .77rem; font-weight: 700; letter-spacing: .06em;
       text-transform: uppercase; color: #33505f;
-      margin: -.1rem 0 .3rem; padding-bottom: .28rem;
-      border-bottom: 1px solid #bfd0dd;
+      margin: 0 0 .45rem;
   }
 
   /* ---- Sidebar ------------------------------------------------------- */

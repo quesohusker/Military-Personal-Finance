@@ -7,9 +7,21 @@ import pandas as pd
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, money, number, integer, fmt_money,
                       fmt_pct, esc, md_money)
+from engine import mortality as MORT
 from engine.retirement import systems as S
 from engine.pay import basepay as BP, grades as G
 from engine.profile import SYS_BRS, SYS_HIGH3, SYS_REDUX, SYS_FINAL_PAY
+
+# A real discount rate is not inflation, and people reasonably assume it is.
+DISCOUNT_HELP = (
+    "NOT inflation. A real discount rate is the return you could earn ABOVE "
+    "inflation \u2014 the opportunity cost of the money. This app works in "
+    "today's dollars, and military retired pay and VA compensation both keep "
+    "pace with inflation, so inflation is already netted out on both sides. "
+    "Discounting a COLA'd stream at a nominal rate double-counts inflation and "
+    "understates the pension badly. About 3% is what a conservative portfolio "
+    "earns above inflation."
+)
 
 h = get_household()
 m = h.member
@@ -47,11 +59,15 @@ with inputs:
                                   value=int(max(38, m.age() + max(0, at_years - m.years_of_service))),
                                   min_value=30, max_value=70, step=1,
                                   key=wkey("retage"))
-        life = st.number_input("How long do you expect to live?", value=90, min_value=65,
-                               max_value=110, step=1, key=wkey("life"))
+        life = st.number_input("How long do you expect to live?",
+                               value=MORT.life_expectancy(m.age(), m.sex),
+                               min_value=65, max_value=110, step=1,
+                               key=wkey("life"),
+                               help=MORT.explain(m.age(), m.sex))
         disc = st.number_input("What real discount rate should we use? (%)", value=3.0,
                                min_value=0.0, max_value=10.0, step=0.25,
-                               format="%.2f", key=wkey("rdisc"))
+                               format="%.2f", key=wkey("rdisc"),
+                               help=DISCOUNT_HELP)
 
     if system == S.SYS_BRS:
         with input_card("Would you take the lump sum?"):

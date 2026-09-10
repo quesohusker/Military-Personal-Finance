@@ -6,8 +6,20 @@ import streamlit as st
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, money, integer, toggle, fmt_money,
                       fmt_pct, esc, md_money, render_findings)
+from engine import mortality as MORT
 from engine.benefits import sbp as SBP
 from engine.benefits import concurrent_receipt as CR
+
+def _survivor_sex(member) -> str:
+    """
+    A survivor is usually a spouse, so default them to the other table.
+
+    Three years of life expectancy separates the two, and SBP's whole value
+    sits in how long the survivor draws it.
+    """
+    return {MORT.SEX_MALE: MORT.SEX_FEMALE,
+            MORT.SEX_FEMALE: MORT.SEX_MALE}.get(member.sex, MORT.SEX_UNSPECIFIED)
+
 
 h = get_household()
 m = h.member
@@ -32,9 +44,13 @@ with inputs:
     with input_card("How long will you both live?"):
         ret_age = st.number_input("How old are you when you retire?", value=int(max(38, m.age())),
                                   min_value=30, max_value=70, key=wkey("sra"))
-        my_life = st.number_input("How long do you expect to live?", value=82,
-                                  min_value=60, max_value=105, key=wkey("mylife"))
-        sp_life = st.number_input("How long do you expect your survivor to live?", value=90,
+        my_life = st.number_input("How long do you expect to live?",
+                                  value=MORT.life_expectancy(m.age(), m.sex),
+                                  min_value=60, max_value=105, key=wkey("mylife"),
+                                  help=MORT.explain(m.age(), m.sex))
+        sp_life = st.number_input("How long do you expect your survivor to live?",
+                                  value=MORT.life_expectancy(
+                                      int(max(30, m.age() - 2)), _survivor_sex(m)),
                                   min_value=60, max_value=110, key=wkey("splife"),
                                   help="SBP's value is concentrated in the case "
                                        "where your survivor lives a long time — "

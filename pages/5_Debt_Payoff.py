@@ -6,7 +6,7 @@ import pandas as pd
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, fmt_money, esc, md_money,
-                      render_findings, mark_dirty, invalidate)
+                      render_findings)
 from engine.debt import payoff as P
 from engine.profile import SERVING
 
@@ -16,56 +16,29 @@ page_header("💳 Getting out of debt",
             "Avalanche against snowball, with the SCRA interest cap priced in.")
 
 # --------------------------------------------------------------------------
-# The debt table is data entry, but a six-column editor cannot be worked in a
-# narrow column, so it keeps the full width above the two-pane split.
+# Debts are entered on "What I am worth", because that is where they belong on
+# a balance sheet. This page consumes them.
 # --------------------------------------------------------------------------
-st.markdown("### Your debts")
-st.caption("Mark anything you took on **before** you entered active duty — the "
-           "SCRA 6% cap applies only to those, and it can change which debt is "
-           "worth attacking first.")
-
-rows = [{"Name": d.name, "Balance": d.balance, "APR %": d.apr * 100,
-         "Minimum payment": d.minimum_payment, "Kind": d.kind,
-         "Pre-service": d.incurred_before_service} for d in h.debts]
-if not rows:
-    rows = [{"Name": "", "Balance": 0.0, "APR %": 0.0, "Minimum payment": 0.0,
-             "Kind": "Credit card", "Pre-service": False}]
-
-edited = st.data_editor(
-    pd.DataFrame(rows), num_rows="dynamic", use_container_width=True,
-    key=wkey("debt_editor"),
-    column_config={
-        "Balance": st.column_config.NumberColumn(format="$%.2f", min_value=0.0),
-        "APR %": st.column_config.NumberColumn(format="%.2f%%", min_value=0.0,
-                                               max_value=99.0),
-        "Minimum payment": st.column_config.NumberColumn(format="$%.2f",
-                                                        min_value=0.0),
-        "Kind": st.column_config.SelectboxColumn(options=P.DEBT_KINDS),
-        "Pre-service": st.column_config.CheckboxColumn(
-            help="Incurred BEFORE you entered active duty. Only these qualify "
-                 "for the SCRA 6% cap."),
-    })
-
-if st.button("Save these debts", type="primary", key=wkey("savedebts")):
-    new = []
-    for _, row in edited.iterrows():
-        name = str(row.get("Name") or "").strip()
-        bal = float(row.get("Balance") or 0)
-        if not name or bal <= 0:
-            continue
-        new.append(P.Debt(name=name, balance=bal,
-                          apr=float(row.get("APR %") or 0) / 100.0,
-                          minimum_payment=float(row.get("Minimum payment") or 0),
-                          kind=str(row.get("Kind") or "Credit card"),
-                          incurred_before_service=bool(row.get("Pre-service"))))
-    h.debts = new
-    mark_dirty(); invalidate()
-    st.success(f"Saved {len(new)} debt(s).")
-    st.rerun()
+if h.debts:
+    with st.expander(f"Your {len(h.debts)} debt(s) — edit them on "
+                     f"'What I am worth'", expanded=False):
+        st.dataframe(
+            pd.DataFrame([{"Name": d.name, "Balance": d.balance,
+                           "APR %": d.apr * 100,
+                           "Minimum payment": d.minimum_payment,
+                           "Kind": d.kind,
+                           "Pre-service": d.incurred_before_service}
+                          for d in h.debts]),
+            hide_index=True, use_container_width=True,
+            column_config={
+                "Balance": st.column_config.NumberColumn(format="$%.2f"),
+                "APR %": st.column_config.NumberColumn(format="%.2f%%"),
+                "Minimum payment": st.column_config.NumberColumn(format="$%.2f"),
+            })
 
 if not h.debts:
-    st.info("No debts recorded. Add them in the table above and press Save.",
-            icon="ℹ️")
+    st.info("No debts recorded. Add them on the **What I am worth** page, "
+            "under Your debts.", icon="ℹ️")
     st.stop()
 
 inputs, results = two_pane()

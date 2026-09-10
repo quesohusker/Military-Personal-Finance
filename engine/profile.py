@@ -98,6 +98,10 @@ class Limits:
 class ServiceMember:
     name: str = ""
     birth_year: int = 1995
+    # Only used to pick a mortality table. Life expectancy differs by about
+    # three years between the two, which is enough to move the value of a
+    # pension or an SBP election by a five-figure sum.
+    sex: str = ""
     component: str = ACTIVE
     branch: str = "Army"
 

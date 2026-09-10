@@ -6,14 +6,77 @@ import pandas as pd
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, money, pct, integer, fmt_money, fmt_pct, esc,
-                      md_money, render_findings)
+                      md_money, render_findings, mark_dirty, invalidate)
+from engine import mortality as MORT
+from engine.debt import payoff as P
 from engine.networth import balance_sheet as BS
+
+# A real discount rate is not inflation, and people reasonably assume it is.
+DISCOUNT_HELP = (
+    "NOT inflation. A real discount rate is the return you could earn ABOVE "
+    "inflation \u2014 the opportunity cost of the money. This app works in "
+    "today's dollars, and military retired pay and VA compensation both keep "
+    "pace with inflation, so inflation is already netted out on both sides. "
+    "Discounting a COLA'd stream at a nominal rate double-counts inflation and "
+    "understates the pension badly. About 3% is what a conservative portfolio "
+    "earns above inflation."
+)
 
 h = get_household()
 m = h.member
 page_header("🏦 What I am worth",
             "Your balance sheet — including the asset most planning tools leave "
             "off entirely.")
+
+# --------------------------------------------------------------------------
+# Debts belong on the balance sheet, so they are entered here. A six-column
+# editor cannot be worked in a narrow column, so it takes the full width
+# above the two-pane split rather than sitting in the input column.
+# --------------------------------------------------------------------------
+st.markdown("### Your debts")
+st.caption("Mark anything you took on **before** you entered active duty — the "
+           "SCRA 6% cap applies only to those, and it can change which debt is "
+           "worth attacking first.")
+
+rows = [{"Name": d.name, "Balance": d.balance, "APR %": d.apr * 100,
+         "Minimum payment": d.minimum_payment, "Kind": d.kind,
+         "Pre-service": d.incurred_before_service} for d in h.debts]
+if not rows:
+    rows = [{"Name": "", "Balance": 0.0, "APR %": 0.0, "Minimum payment": 0.0,
+             "Kind": "Credit card", "Pre-service": False}]
+
+edited = st.data_editor(
+    pd.DataFrame(rows), num_rows="dynamic", use_container_width=True,
+    key=wkey("debt_editor"),
+    column_config={
+        "Balance": st.column_config.NumberColumn(format="$%.2f", min_value=0.0),
+        "APR %": st.column_config.NumberColumn(format="%.2f%%", min_value=0.0,
+                                               max_value=99.0),
+        "Minimum payment": st.column_config.NumberColumn(format="$%.2f",
+                                                        min_value=0.0),
+        "Kind": st.column_config.SelectboxColumn(options=P.DEBT_KINDS),
+        "Pre-service": st.column_config.CheckboxColumn(
+            help="Incurred BEFORE you entered active duty. Only these qualify "
+                 "for the SCRA 6% cap."),
+    })
+
+if st.button("Save these debts", type="primary", key=wkey("savedebts")):
+    new = []
+    for _, row in edited.iterrows():
+        name = str(row.get("Name") or "").strip()
+        bal = float(row.get("Balance") or 0)
+        if not name or bal <= 0:
+            continue
+        new.append(P.Debt(name=name, balance=bal,
+                          apr=float(row.get("APR %") or 0) / 100.0,
+                          minimum_payment=float(row.get("Minimum payment") or 0),
+                          kind=str(row.get("Kind") or "Credit card"),
+                          incurred_before_service=bool(row.get("Pre-service"))))
+    h.debts = new
+    mark_dirty(); invalidate()
+    st.success(f"Saved {len(new)} debt(s).")
+    st.rerun()
+
 
 inputs, results = two_pane()
 
@@ -44,15 +107,15 @@ with inputs:
               step=1000.0)
 
     with input_card("What should we assume?"):
-        life_exp = st.number_input("How long do you expect to live?", value=90, min_value=60,
-                                   max_value=110, step=1, key=wkey("lifeexp"))
+        life_exp = st.number_input("How long do you expect to live?",
+                                   value=MORT.life_expectancy(m.age(), m.sex),
+                                   min_value=60, max_value=110, step=1,
+                                   key=wkey("lifeexp"),
+                                   help=MORT.explain(m.age(), m.sex))
         disc = st.number_input("Assume a real discount rate of (%)",
                                value=3.0, min_value=0.0, max_value=10.0, step=0.25,
                                format="%.2f", key=wkey("disc"),
-                               help="A REAL rate, because military retired pay and "
-                                    "VA compensation both keep pace with inflation. "
-                                    "Discounting a COLA'd stream at a nominal rate "
-                                    "understates it badly.")
+                               help=DISCOUNT_HELP)
 
 # ==========================================================================
 # What those answers add up to.
@@ -99,8 +162,9 @@ with results:
                    "your own contributions. A BRS member contributing entirely to "
                    "Roth TSP still accumulates a traditional balance from the "
                    "match.")
-        st.caption("Other debts are entered on the **Debt Payoff** page and flow "
-                   "through to this balance sheet automatically.")
+        st.caption("Debts entered in the table above flow into this balance "
+                   "sheet; the **Getting out of debt** page works from the "
+                   "same list.")
 
     # ----------------------------------------------------------------------
     if bs.streams:

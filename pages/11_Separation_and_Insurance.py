@@ -6,6 +6,7 @@ import streamlit as st
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, money, fmt_money, esc,
                       render_findings)
+from engine import mortality as MORT
 from engine.benefits import disability_separation as DS
 from engine.benefits import life_insurance as LI
 from engine.coach import prime_directive as PD
@@ -43,8 +44,11 @@ with inputs:
         sep_age = st.number_input("How old will you be when you separate?",
                                   value=int(max(20, m.age())),
                                   min_value=17, max_value=70, key=wkey("dsage"))
-        life_exp = st.number_input("How long do you expect to live?", value=85, min_value=50,
-                                   max_value=105, key=wkey("dslife"))
+        life_exp = st.number_input("How long do you expect to live?",
+                                   value=MORT.life_expectancy(m.age(), m.sex),
+                                   min_value=50, max_value=105,
+                                   key=wkey("dslife"),
+                                   help=MORT.explain(m.age(), m.sex))
         va_comp = st.number_input("What VA pay do you expect, per month?",
                                   value=float(m.va_disability_monthly or 1_400.0),
                                   min_value=0.0, step=50.0, key=wkey("dsvac"),
