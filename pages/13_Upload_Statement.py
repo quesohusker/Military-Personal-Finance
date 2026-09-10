@@ -186,7 +186,8 @@ with results:
                 head = st.columns([2.2, 1.3])
                 with head[0]:
                     include = st.checkbox(
-                        f"**{c.account_label}** — {c.institution}",
+                        # The masked number is asterisks; bare, they close the bold early.
+                        f"**{c.account_label.replace('*', chr(92) + '*')}** — {c.institution}",
                         value=c.preselected, key=wkey(f"stmt_use_{i}"))
                     st.caption(f"{c.account_kind} · confidence "
                                f"{_confidence_word(c.confidence)} "
