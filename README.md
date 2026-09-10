@@ -43,6 +43,10 @@ assumes housing and utilities cost **105% of BAH** unless you say otherwise.
 | **Assets & Debts** | Net worth, including replacement cost of guaranteed income |
 | **Debt Payoff** | Avalanche vs snowball, priced with the SCRA 6% cap |
 | **Prime Directive** | Your ordered next actions, scored |
+| **TSP & Deployment** | Match, contribution limits, CZTE, the combat-zone overflow |
+| **Retirement** | All four systems, the 20-year cliff, the BRS lump-sum trap |
+| **Survivor & VA** | SBP priced honestly, CRDP vs CRSC after tax |
+| **Residency & Education** | State of legal residence, GI Bill use vs transfer |
 
 ## Rate data
 
@@ -86,7 +90,7 @@ pages/          Streamlit UI
 python -m pytest tests/ -q
 ```
 
-214 tests. The data-driven ones skip cleanly when rate tables are absent, so a
+365 tests. The data-driven ones skip cleanly when rate tables are absent, so a
 fresh clone passes either way.
 
 ## Scope
