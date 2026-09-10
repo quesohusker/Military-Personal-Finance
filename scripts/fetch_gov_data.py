@@ -52,6 +52,7 @@ import hashlib
 import json
 import pathlib
 import re
+import shutil
 import ssl
 import sys
 import time
@@ -67,10 +68,19 @@ RAW_ROOT = ROOT / "data" / "_gov_raw"
 HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                   "Chrome/124.0 Safari/537.36"),
+                   "Chrome/124.0.0.0 Safari/537.36"),
     "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
-               "application/pdf;q=0.9,*/*;q=0.8"),
+               "image/avif,image/webp,*/*;q=0.8"),
     "Accept-Language": "en-US,en;q=0.9",
+    # A bare UA is not enough any more. SSA, DFAS and DTMO sit behind a bot
+    # filter that looks for the header set a real navigation always carries;
+    # without these it answers 403 to a request it would otherwise serve.
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+    "Upgrade-Insecure-Requests": "1",
+    "Connection": "keep-alive",
 }
 
 TIMEOUT = 45
@@ -130,13 +140,13 @@ SOURCES: list[Source] = [
 
     # ---- Medicare / CMS --------------------------------------------------
     Source("cms_part_b_2026", "medicare",
-           "https://www.cms.gov/newsroom/fact-sheets/2026-medicare-parts-b-premiums-and-deductibles",
+           "https://www.medicare.gov/basics/costs/medicare-costs",
            "engine/benefits/healthcare.py -- the standard Part B premium and "
            "deductible, and the IRMAA table in full",
            note="The URL carries the year. If 2026 404s, try the CMS newsroom "
                 "listing and correct the year."),
     Source("cms_newsroom_factsheets", "medicare",
-           "https://www.cms.gov/newsroom/fact-sheets",
+           "https://www.cms.gov/newsroom/search?search_api_fulltext=part+b+premium",
            "a fallback listing, to find the current Part B fact sheet"),
 
     # ---- IRS -------------------------------------------------------------
@@ -149,7 +159,7 @@ SOURCES: list[Source] = [
                 "number is wrong for the year you want, the IRS 'Tax "
                 "inflation adjustments' newsroom item links the right one."),
     Source("irs_inflation_adjustments", "irs",
-           "https://www.irs.gov/newsroom/irs-provides-tax-inflation-adjustments-for-tax-year-2026",
+           "https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026",
            "the readable summary of the same figures"),
     Source("irs_retirement_limits", "irs",
            "https://www.irs.gov/newsroom/401k-limit-increases-to-24500-for-2026-ira-limit-increases-to-7500",
@@ -160,7 +170,7 @@ SOURCES: list[Source] = [
            "engine/tax/current_year.py -- EITC amounts and phase-outs, the "
            "figures the agent was least confident about"),
     Source("irs_combat_pay_eitc", "irs",
-           "https://www.irs.gov/individuals/military/combat-pay-special-combat-pay",
+           "https://www.irs.gov/individuals/military",
            "the combat-pay election into earned income for EITC"),
     Source("irs_pub_3_armed_forces", "irs",
            "https://www.irs.gov/pub/irs-pdf/p3.pdf",
@@ -309,8 +319,72 @@ def _parse_life_table(raw: bytes) -> str:
 
 
 # ==========================================================================
+# The short list, for when a host refuses every automated request
+# ==========================================================================
+
+MANUAL_NOTE = """
+Some hosts refuse anything automated no matter what headers it carries --
+SSA, DFAS and DTMO all do. Rather than fight it, open these few in a browser
+and save the page. This is the list that actually changes an answer in the
+app; everything else the script could not reach is confirmation of prose, not
+a number, and can wait.
+"""
+
+MANUAL_LIST = [
+    (1, "ssa_period_life_table",
+     "The single largest unverified thing in the app. Every pension value, "
+     "every SBP ratio and every conversion horizon is measured against it, "
+     "and the built-in table is an approximation. Save the page, then:\n"
+     "     python3 scripts/import_life_table.py --file <saved.html>"),
+    (2, "ssa_medicare_premiums",
+     "Part B and the IRMAA brackets. CMS answered 404 as well, so this is "
+     "the only route to the figures the healthcare page is built on -- and "
+     "IRMAA is what makes a Roth conversion cost more two years later."),
+    (3, "ssa_bend_points",
+     "The PIA bend points. Everything the Social Security page estimates for "
+     "someone without a statement scales directly with these two numbers, "
+     "and they are the figures that agent had least confidence in."),
+    (4, "dtmo_bas_rates",
+     "BAS. Small, but it is in every pay calculation in the app, and the "
+     "brief for this project had the enlisted and officer rates backwards."),
+]
+
+
+# ==========================================================================
 # Fetching
 # ==========================================================================
+
+def _fetch_via_curl(url: str) -> tuple[int, bytes, str]:
+    """
+    Second opinion from curl, for a host that refused urllib.
+
+    A bot filter can reject on the TLS handshake alone, before it has seen a
+    single header. curl's handshake looks different, so a 403 from urllib is
+    quite often a 200 from curl with the same headers.
+    """
+    import subprocess, tempfile
+    if not shutil.which("curl"):
+        return 0, b"", "curl not installed"
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        path = tmp.name
+    try:
+        cmd = ["curl", "-sS", "-L", "--compressed", "--max-time", str(TIMEOUT),
+               "-o", path, "-w", "%{http_code}"]
+        for k, v in HEADERS.items():
+            cmd += ["-H", f"{k}: {v}"]
+        cmd.append(url)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT + 10)
+        code = int((r.stdout or "0").strip() or 0)
+        body = pathlib.Path(path).read_bytes()
+        return code, body, "" if code == 200 else f"curl HTTP {code}"
+    except Exception as e:
+        return 0, b"", f"curl {type(e).__name__}: {e}"
+    finally:
+        try:
+            pathlib.Path(path).unlink()
+        except OSError:
+            pass
+
 
 def fetch(url: str) -> tuple[int, bytes, str]:
     """(status, body, error). Retries on transport failure, not on a 4xx."""
@@ -327,14 +401,49 @@ def fetch(url: str) -> tuple[int, bytes, str]:
                 body = e.read()
             except Exception:
                 pass
-            # 403 is a bot filter and 404 is a moved page. Neither improves
-            # on a retry, and hammering a public site over it is rude.
+            # 404 is a moved page and no retry fixes it. 403 is a bot
+            # filter, which curl's different TLS fingerprint sometimes walks
+            # straight past -- worth exactly one more request, not a loop.
+            if e.code in (403, 406, 429):
+                c_status, c_body, c_err = _fetch_via_curl(url)
+                if c_status == 200 and c_body:
+                    return c_status, c_body, ""
+                return e.code, body, f"HTTP {e.code} {e.reason} (curl too: {c_err})"
             return e.code, body, f"HTTP {e.code} {e.reason}"
         except Exception as e:                     # timeout, DNS, TLS, reset
             last = f"{type(e).__name__}: {e}"
             if attempt < RETRIES - 1:
                 time.sleep(2 ** attempt)
     return 0, b"", last
+
+
+# The same discipline the data importers use: a response that arrives looking
+# fine and carries nothing is more dangerous than one that fails loudly,
+# because nobody goes back and checks it.
+SHELL_MIN_BYTES = 12_000        # a real agency page is far bigger than this
+
+
+def content_warning(body: bytes, url: str) -> str:
+    """Empty if the body looks like a real page; otherwise why it does not."""
+    if url.lower().split("?")[0].endswith((".pdf", ".zip", ".csv", ".xlsx")):
+        return "" if len(body) > 1024 else "suspiciously small for a document"
+
+    text = body.decode("utf-8", errors="replace")
+    if len(body) < SHELL_MIN_BYTES:
+        # A JavaScript shell: the markup arrives, the content never does
+        # because it is fetched client-side. Every such page on a site comes
+        # back the same size, which is the tell.
+        digits = sum(c.isdigit() for c in text)
+        if digits < 200:
+            return (f"only {len(body):,} bytes and {digits} digits -- this is "
+                    f"probably a JavaScript shell, not the page. Save it from "
+                    f"a browser instead.")
+    low = text.lower()
+    for phrase in ("access denied", "request unsuccessful", "incapsula",
+                   "are you a robot", "enable javascript to view"):
+        if phrase in low:
+            return f"body says {phrase!r} -- a bot filter answered, not the page"
+    return ""
 
 
 def run(sources: list[Source], out_dir: pathlib.Path) -> list[dict]:
@@ -361,15 +470,19 @@ def run(sources: list[Source], out_dir: pathlib.Path) -> list[dict]:
             rec["sha256"] = hashlib.sha256(body).hexdigest()
 
         if status == 200 and body:
-            print(f"ok   {len(body):>9,} bytes", end="")
-            if s.parser:
+            warn = content_warning(body, s.url)
+            rec["content_warning"] = warn
+            print(f"{'thin' if warn else 'ok  '} {len(body):>9,} bytes", end="")
+            if warn:
+                print(f"\n{'':>36}?? {warn}")
+            if s.parser and not warn:
                 try:
                     rec["parsed"] = s.parser(body, out_dir)
                     print(f"  -> {rec['parsed']}")
                 except Exception as e:
                     rec["parsed"] = f"PARSE FAILED: {type(e).__name__}: {e}"
                     print(f"\n{'':>36}!! {rec['parsed']}")
-            else:
+            elif not warn:
                 print()
         else:
             print(f"FAILED  {err or status}")
@@ -397,6 +510,8 @@ def main() -> int:
                     help="archive directory (default data/_gov_raw/<date>)")
     ap.add_argument("--zip", action="store_true",
                     help="bundle the archive into one .zip to send back")
+    ap.add_argument("--manual", action="store_true",
+                    help="the short list worth saving from a browser by hand")
     args = ap.parse_args()
 
     cats = sorted({s.category for s in SOURCES})
@@ -410,6 +525,17 @@ def main() -> int:
                     if s.note:
                         print(f"    note: {s.note}")
         print(f"\n{len(SOURCES)} sources in {len(cats)} categories.")
+        return 0
+
+    if args.manual:
+        print(MANUAL_NOTE)
+        for pri, key, why in MANUAL_LIST:
+            src = next((x for x in SOURCES if x.key == key), None)
+            print(f"\n{pri}. {key}")
+            print(f"   {src.url if src else ''}")
+            print(f"   {why}")
+        print("\nSave each as a file, then either hand them to the matching\n"
+              "importer or drop them in the archive folder and send the zip.")
         return 0
 
     chosen = SOURCES
@@ -435,12 +561,34 @@ def main() -> int:
     (out_dir / "MANIFEST.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8")
 
-    ok = [r for r in results if r["status"] == 200 and r["bytes"]]
-    bad = [r for r in results if r not in ok]
+    by_size = {}
+    for r in results:
+        if r["status"] == 200 and r["bytes"]:
+            by_size.setdefault(r["bytes"], []).append(r["key"])
+    for size, keys in by_size.items():
+        if len(keys) > 1 and size < SHELL_MIN_BYTES:
+            for k in keys:
+                for r in results:
+                    if r["key"] == k and not r.get("content_warning"):
+                        r["content_warning"] = (
+                            f"identical {size:,} bytes to {len(keys)-1} other "
+                            f"page(s) -- all shells of the same site")
+
+    ok = [r for r in results if r["status"] == 200 and r["bytes"]
+          and not r.get("content_warning")]
+    thin = [r for r in results if r["status"] == 200 and r["bytes"]
+            and r.get("content_warning")]
+    bad = [r for r in results if r not in ok and r not in thin]
     parsed = [r for r in ok if r["parsed"] and "FAILED" not in r["parsed"]]
 
     print(f"\n{'=' * 72}")
-    print(f"{len(ok)}/{len(results)} fetched, {len(parsed)} parsed and installed")
+    print(f"{len(ok)}/{len(results)} fetched with real content, "
+          f"{len(parsed)} parsed and installed")
+    if thin:
+        print("\nArrived, but carried nothing -- save these from a browser:")
+        for r in thin:
+            print(f"  {r['key']:<28} {r['content_warning']}")
+            print(f"    {r['url']}")
     if parsed:
         print("\nInstalled:")
         for r in parsed:
