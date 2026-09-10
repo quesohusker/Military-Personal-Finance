@@ -34,6 +34,7 @@ MENU = {
         _page("pages/1_Profile.py", "Who I am", "👤"),
         _page("pages/2_Pay.py", "What I actually get paid", "💵"),
         _page("pages/4_Assets_and_Debts.py", "What I am worth", "🏦"),
+        _page("pages/21_Investments.py", "How is my money invested?", "📊"),
     ],
     "Decisions I make now": [
         _page("pages/14_Roth_Conversions.py", "Should I convert to Roth?", "🔁"),
@@ -44,17 +45,20 @@ MENU = {
     ],
     "When I get orders": [
         _page("pages/3_Career.py", "Promotions and PCS moves", "📈"),
+        _page("pages/19_Home_and_VA_Loan.py", "Buy, rent, or keep the house?", "🏠"),
     ],
     "When I deploy": [
         _page("pages/7_TSP_and_Deployment.py", "Combat-zone pay and the TSP", "🪖"),
     ],
     "When I leave the service": [
         _page("pages/8_Retirement.py", "Do I stay to twenty?", "🎖️"),
+        _page("pages/18_Leaving_the_Service.py", "Leaving the service", "🚪"),
         _page("pages/11_Separation_and_Insurance.py",
               "If I am medically separated", "⚕️"),
         _page("pages/15_Social_Security.py", "When do I claim Social Security?", "🧓"),
         _page("pages/16_Healthcare.py", "What will healthcare cost me?", "🏥"),
         _page("pages/9_Survivor_and_VA.py", "Survivors, SBP and the VA", "🛡️"),
+        _page("pages/20_Estate_and_Gifting.py", "Who gets what, and when", "🧾"),
     ],
 }
 
