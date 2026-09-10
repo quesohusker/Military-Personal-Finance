@@ -1,14 +1,14 @@
 """
 Local persistence for plans.
 
-Two independent mechanisms, because "save my data" means different things
-depending on how the app is running:
+Two mechanisms, because "save my data" means different things depending on how
+the app is running:
 
-  * Named slots in a local folder (./saved_plans). Works when you run Streamlit
-    on your own machine. Survives restarts. This is the everyday path.
+  * Named slots in a local folder (./saved_plans). Works when Streamlit runs on
+    your own machine, survives restarts, and is the everyday path.
   * Download / upload of a JSON file. Works everywhere, including a hosted
-    deployment where the filesystem is not yours. This is the portable path,
-    and the one to use for backups or for sending a plan to someone else.
+    deployment where the filesystem is ephemeral and a saved slot would vanish
+    on the next restart. This is the path that matters on Streamlit Cloud.
 
 Nothing leaves the machine either way.
 """
@@ -19,10 +19,10 @@ from datetime import datetime
 import json
 import re
 
-from engine.roth_profile import Profile
+from engine.profile import Household
 
 SAVE_DIR = Path(__file__).resolve().parent.parent / "saved_plans"
-SUFFIX = ".rothplan.json"
+SUFFIX = ".mpfplan.json"
 
 
 def ensure_dir() -> Path:
@@ -31,7 +31,7 @@ def ensure_dir() -> Path:
 
 
 def safe_name(name: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9 _.-]", "", name).strip()
+    cleaned = re.sub(r"[^A-Za-z0-9 _.-]", "", name or "").strip()
     return (cleaned or "plan")[:80]
 
 
@@ -40,36 +40,32 @@ def slot_path(name: str) -> Path:
 
 
 def list_slots() -> list[dict]:
-    """Saved plans in the local folder, newest first."""
     ensure_dir()
     out = []
     for f in SAVE_DIR.glob("*" + SUFFIX):
         try:
-            stat = f.stat()
-            out.append({
-                "name": f.name[: -len(SUFFIX)],
-                "path": str(f),
-                "modified": datetime.fromtimestamp(stat.st_mtime),
-                "size": stat.st_size,
-            })
+            st = f.stat()
+            out.append({"name": f.name[: -len(SUFFIX)], "path": str(f),
+                        "modified": datetime.fromtimestamp(st.st_mtime),
+                        "size": st.st_size})
         except OSError:
             continue
     return sorted(out, key=lambda d: d["modified"], reverse=True)
 
 
-def save_slot(p: Profile, name: str) -> Path:
+def save_slot(h: Household, name: str) -> Path:
     path = slot_path(name)
-    payload = p.to_dict()
+    payload = h.to_dict()
     payload["_saved_at"] = datetime.now().isoformat(timespec="seconds")
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
 
 
-def load_slot(name: str) -> Profile:
+def load_slot(name: str) -> Household:
     path = slot_path(name)
     if not path.exists():
         raise FileNotFoundError(f"No saved plan named '{name}'.")
-    return Profile.from_json(path.read_text(encoding="utf-8"))
+    return Household.from_json(path.read_text(encoding="utf-8"))
 
 
 def delete_slot(name: str) -> bool:
@@ -80,20 +76,19 @@ def delete_slot(name: str) -> bool:
     return False
 
 
-def to_download_bytes(p: Profile) -> bytes:
-    payload = p.to_dict()
+def to_download_bytes(h: Household) -> bytes:
+    payload = h.to_dict()
     payload["_saved_at"] = datetime.now().isoformat(timespec="seconds")
     return json.dumps(payload, indent=2).encode("utf-8")
 
 
-def download_filename(p: Profile) -> str:
+def download_filename(h: Household) -> str:
     stamp = datetime.now().strftime("%Y%m%d")
-    return f"{safe_name(p.profile_name)}_{stamp}{SUFFIX}"
+    return f"{safe_name(h.profile_name)}_{stamp}{SUFFIX}"
 
 
-def from_upload_bytes(data: bytes) -> Profile:
-    text = data.decode("utf-8")
-    obj = json.loads(text)
+def from_upload_bytes(data: bytes) -> Household:
+    obj = json.loads(data.decode("utf-8"))
     if not isinstance(obj, dict):
         raise ValueError("That file does not contain a plan.")
-    return Profile.from_dict(obj)
+    return Household.from_dict(obj)
