@@ -64,51 +64,9 @@ st.caption("Financial planning built for the way military pay and benefits "
 
 st.markdown("---")
 
-left, right = st.columns([3, 2])
+bah_data = BAH.load()
+bp_table = BP.load()
 
-with left:
-    st.subheader("Why a military-specific tool")
-    st.markdown(
-        """
-**Your pay is not a salary.** BAH and BAS are untaxed, so an E-6 with \$70,000
-of total compensation may have only about \$48,000 of taxable wages. The
-effective federal rate can run eight to twelve points below a civilian's at the
-same headline number — and that single fact drives the Roth-versus-traditional
-answer, the affordability answer, and the conversion answer decades later.
-
-**The TSP match only exists under BRS.** "Always contribute enough to get the
-match" is advice that does nothing for a High-3 member, because there is no
-match. Which system applies is decided entirely by your DIEMS date.
-
-**An HSA is not available to you on active duty.** TRICARE is not a
-high-deductible plan. Every civilian priority list ranks the HSA above maxing
-your retirement plan; that step simply does not exist for you.
-
-**A deployment is the highest-leverage financial window in a career.** The
-Savings Deposit Program pays a guaranteed 10% on up to \$10,000, and the Combat
-Zone Tax Exclusion can make a year nearly tax-free — which is the moment to fill
-Roth accounts and convert old traditional balances at almost no cost.
-
-**BAH is not a raise.** It is set below full local housing cost by design, with
-members absorbing roughly 5% out of pocket. Treating it as spendable income is
-the most common way a military budget projection goes wrong.
-        """
-    )
-
-with right:
-    st.subheader("Your data stays here")
-    st.info("**Nothing you enter leaves this machine.** No account, no server, "
-            "no analytics. Plans save as plain JSON.", icon="🔒")
-
-    bah_data = BAH.load()
-    bp_table = BP.load()
-    st.markdown("**Rate data**")
-    st.markdown(
-        f"- BAH: {'✅ ' + str(bah_data.year) + f' — {bah_data.n_mhas} housing areas, {bah_data.n_zips:,} ZIP codes' if bah_data else '❌ not installed'}\n"
-        f"- Basic pay: {'✅ ' + str(bp_table.year) if bp_table else '❌ not installed'}"
-    )
-
-st.markdown("---")
 st.subheader("Start here")
 
 c1, c2, c3 = st.columns(3)
@@ -142,6 +100,19 @@ cols[3].metric("Years of service", f"{m.years_of_service:g}")
 cols[4].metric("Monthly expenses", fmt_money(h.monthly_expenses))
 
 st.markdown("---")
+
+f1, f2 = st.columns([1, 1])
+with f1:
+    st.info("**Nothing you enter leaves this machine.** No account, no server, "
+            "no analytics. Plans save as plain JSON.", icon="🔒")
+with f2:
+    st.markdown(
+        f"**Rate data** — "
+        f"{'BAH ' + str(bah_data.year) + f' ({bah_data.n_mhas} housing areas, {bah_data.n_zips:,} ZIP codes)' if bah_data else 'BAH ❌ not installed'}"
+        f" · "
+        f"{'basic pay ' + str(bp_table.year) if bp_table else 'basic pay ❌ not installed'}"
+    )
+
 st.caption(
     "An estimator and a planning tool. Not tax, legal or investment advice, and "
     "no substitute for your LES, your Retiree Account Statement, or a "
