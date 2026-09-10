@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Manage a local install of the Military Roth Conversion Planner.
+# Manage a local install of the Military Personal Finance.
 #
 #   ./roth.sh update    pull the latest from GitHub, refresh deps, restart
 #   ./roth.sh start     start the app in the background
@@ -19,7 +19,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENTRY="Roth_Planner.py"
+ENTRY="Military_Finance.py"
 PORT="${ROTH_PORT:-8501}"
 VENV="$APP_DIR/.venv"
 PY="$VENV/bin/python3"
@@ -149,7 +149,7 @@ do_start() {
 do_update() {
     cd "$APP_DIR"
     [ -d .git ] || die "$APP_DIR is not a git clone. Re-clone it:
-       git clone https://github.com/quesohusker/military-roth-conversions.git"
+       git clone https://github.com/quesohusker/military-personal-finance.git"
 
     branch="$(git rev-parse --abbrev-ref HEAD)"
     say "Updating from GitHub (branch: $branch)"

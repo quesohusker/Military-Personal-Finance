@@ -91,8 +91,20 @@ class WaterfallResult:
 # --------------------------------------------------------------------------
 
 def monthly_basic_pay(m: ServiceMember) -> float:
-    """Basic pay only. The LES override wins; otherwise fall back to 0."""
-    return max(0.0, m.basic_pay_monthly_override)
+    """
+    Basic pay only -- never BAH, BAS or special pays.
+
+    The LES override wins. Otherwise fall back to the published table, which is
+    what makes the waterfall usable before the member has typed anything in.
+    """
+    if m.basic_pay_monthly_override > 0:
+        return m.basic_pay_monthly_override
+    try:
+        from engine.pay import basepay as BP
+        r = BP.lookup(m.grade, m.years_of_service, BP.load())
+        return r.monthly if r.found else 0.0
+    except Exception:
+        return 0.0
 
 
 def _fmt(x: float) -> str:
@@ -131,9 +143,9 @@ def _step_les(h: Household) -> Step:
                  "below.")
     missing = []
     if h.monthly_expenses <= 0:
-        missing.append("monthly expenses")
+        missing.append("your monthly expenses")
     if m.is_serving and monthly_basic_pay(m) <= 0:
-        missing.append("basic pay from your LES")
+        missing.append("your basic pay")
 
     if missing:
         s.status = NOT_STARTED
@@ -141,7 +153,14 @@ def _step_les(h: Household) -> Step:
                     "computed from these.")
     else:
         s.status = DONE
-        s.action = "Verify your LES quarterly: SGLI election, TSP election, dependency status, and allotments."
+        using_table = m.is_serving and m.basic_pay_monthly_override <= 0
+        s.action = ("Verify your LES quarterly: SGLI election, TSP election, "
+                    "dependency status, and allotments.")
+        if using_table:
+            s.action += (f" Basic pay is currently coming from the published "
+                         f"{h.limits.year} pay table "
+                         f"({_fmt(monthly_basic_pay(m))} a month). Enter the "
+                         f"figure from your LES on the Pay page if it differs.")
     if m.is_serving:
         s.military_note = ("Check that dependency status on your LES matches "
                            "reality — it drives BAH and a stale entry is both a "

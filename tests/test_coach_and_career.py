@@ -300,3 +300,66 @@ def test_government_quarters_pay_no_bah():
     rows = TL.project(m, TL.CareerTimeline(separation_at_years_of_service=8.0),
                       start_year=2026)
     assert all(r.bah_monthly == 0 for r in rows)
+
+
+# ==========================================================================
+# The waterfall must work before the user types anything
+# ==========================================================================
+
+from engine.pay import basepay as BP  # noqa: E402
+
+has_pay_table = pytest.mark.skipif(
+    BP.load() is None, reason="No basic pay table installed")
+
+
+@has_pay_table
+def test_basic_pay_falls_back_to_the_published_table():
+    """
+    A member who has entered nothing but grade and years of service should still
+    get a working waterfall. Requiring an LES figure first makes the whole page
+    useless on the first visit.
+    """
+    m = brs_member(basic_pay_monthly_override=0.0)
+    assert PD.monthly_basic_pay(m) == pytest.approx(4110.00)
+
+
+def test_les_override_still_wins_over_the_table():
+    m = brs_member(basic_pay_monthly_override=5555.55)
+    assert PD.monthly_basic_pay(m) == 5555.55
+
+
+@has_pay_table
+def test_the_les_step_completes_without_a_manual_pay_entry():
+    h = household(brs_member(basic_pay_monthly_override=0.0))
+    step = PD.evaluate(h).by_key("les")
+    assert step.status == PD.DONE
+    assert "pay table" in step.action
+
+
+@has_pay_table
+def test_the_les_step_says_where_the_number_came_from():
+    """If the app is using a table rather than their LES, say so."""
+    h = household(brs_member(basic_pay_monthly_override=0.0))
+    assert "differs" in PD.evaluate(h).by_key("les").action
+
+    h2 = household(brs_member(basic_pay_monthly_override=4200.0))
+    assert "pay table" not in PD.evaluate(h2).by_key("les").action
+
+
+@has_pay_table
+def test_the_match_gap_is_quantified_from_the_table():
+    h = household(brs_member(basic_pay_monthly_override=0.0,
+                             tsp_contribution_pct=0.03))
+    step = PD.evaluate(h).by_key("tsp_match")
+    assert step.amount_needed == pytest.approx(4110.00 * 0.02 * 12, rel=0.01)
+    assert "$" in step.action
+
+
+@has_pay_table
+def test_missing_expenses_still_blocks_the_first_step():
+    """Basic pay can be inferred; spending cannot."""
+    h = household(brs_member(basic_pay_monthly_override=0.0), monthly_expenses=0)
+    step = PD.evaluate(h).by_key("les")
+    assert step.status == PD.NOT_STARTED
+    assert "monthly expenses" in step.action
+    assert "basic pay" not in step.action
