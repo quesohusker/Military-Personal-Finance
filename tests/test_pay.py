@@ -547,3 +547,172 @@ def test_housing_position_handles_no_allowance():
 def test_share_consumed_reflects_the_assumption():
     hp = bah.housing_position(2_000)
     assert hp.share_consumed == pytest.approx(bah.DEFAULT_HOUSING_COST_SHARE)
+
+
+# ==========================================================================
+# Basic pay
+# ==========================================================================
+
+from engine.pay import basepay as BP  # noqa: E402
+
+has_basepay = pytest.mark.skipif(
+    BP.load() is None, reason="No basic pay table installed")
+
+
+def test_basepay_without_a_table_defers_to_the_les():
+    r = BP.lookup("E-5", 6, None)
+    assert not r.found
+    assert "LES" in r.note
+
+
+def test_basepay_les_override_beats_the_table():
+    t = BP.load()
+    r = BP.lookup("E-5", 6, t, override_monthly=9999.99)
+    assert r.found and r.monthly == 9999.99
+    assert "LES" in r.note
+
+
+@has_basepay
+def test_basepay_matches_the_published_2026_table():
+    """Values transcribed straight from the DFAS 2026 active duty table."""
+    t = BP.load(2026)
+    for grade, yos, expected in [
+        ("E-1", 0, 2407.20), ("E-5", 6, 4110.00), ("E-6", 10, 4759.50),
+        ("E-7", 14, 5835.00), ("E-9", 22, 8423.10), ("E-9", 26, 9267.90),
+        ("O-1", 0, 4150.20), ("O-3", 4, 7382.70), ("O-4", 10, 9420.00),
+        ("O-5", 22, 12394.80), ("O-6", 20, 13751.10),
+        ("W-2", 8, 6051.00), ("W-4", 16, 8619.90),
+        ("O-3E", 10, 8375.70), ("O-1E", 6, 5576.70), ("O-1E", 8, 5783.10),
+    ]:
+        r = BP.lookup(grade, yos, t)
+        assert r.found, f"{grade} at {yos}"
+        assert r.monthly == pytest.approx(expected), f"{grade} at {yos}"
+
+
+@has_basepay
+def test_rows_are_right_aligned_not_left():
+    """
+    W-5 exists only from 20 years, so its row is short. Left-aligning it would
+    put a twenty-year rate in the '2 or less' column and understate every
+    senior warrant officer in the app.
+    """
+    t = BP.load(2026)
+    assert BP.lookup("W-5", 20, t).monthly == pytest.approx(10169.70)
+    assert BP.lookup("W-5", 22, t).monthly == pytest.approx(10685.70)
+    assert BP.lookup("E-9", 10, t).monthly == pytest.approx(6910.20)
+    assert BP.lookup("E-8", 8, t).monthly == pytest.approx(5656.50)
+    assert BP.lookup("O-3E", 4, t).monthly == pytest.approx(7382.70)
+
+
+@has_basepay
+def test_prior_enlisted_officers_are_never_paid_less():
+    t = BP.load(2026)
+    for base, prior in (("O-1", "O-1E"), ("O-2", "O-2E"), ("O-3", "O-3E")):
+        for yos in (4, 6, 8, 10, 12, 14, 16, 18, 20, 26):
+            assert (BP.lookup(prior, yos, t).monthly
+                    >= BP.lookup(base, yos, t).monthly), f"{prior} at {yos}"
+
+
+@has_basepay
+def test_the_prior_enlisted_benefit_starts_where_the_base_grade_caps_out():
+    """
+    O-1E is not a flat bump over O-1. Early on the two are paid identically --
+    the separate line exists to keep a mustang's pay rising after the base
+    grade's longevity scale has flattened. O-1 caps at 3 years, and O-1E pulls
+    ahead at 6; O-2E at 8; O-3E only at 14.
+
+    An app that told an O-3E at 10 years they were earning a premium would be
+    wrong, and one that treated O-xE as merely cosmetic would understate a
+    senior mustang by over $1,200 a month.
+    """
+    t = BP.load(2026)
+    for base, prior, diverges_at in (("O-1", "O-1E", 6), ("O-2", "O-2E", 8),
+                                     ("O-3", "O-3E", 14)):
+        before = diverges_at - 2
+        assert (BP.lookup(prior, before, t).monthly
+                == pytest.approx(BP.lookup(base, before, t).monthly)), \
+            f"{prior} should match {base} at {before} years"
+        assert (BP.lookup(prior, diverges_at, t).monthly
+                > BP.lookup(base, diverges_at, t).monthly), \
+            f"{prior} should exceed {base} from {diverges_at} years"
+
+    # The gap is large by the time it matters.
+    gap = BP.lookup("O-3E", 20, t).monthly - BP.lookup("O-3", 20, t).monthly
+    assert gap > 500
+
+
+@has_basepay
+def test_pay_never_decreases_with_longevity():
+    t = BP.load(2026)
+    for g in G.GRADES:
+        prev = 0.0
+        for yos in G.YOS_COLUMNS:
+            r = BP.lookup(g.label, yos, t)
+            if r.found:
+                assert r.monthly >= prev - 0.005, f"{g.label} at {yos}"
+                prev = r.monthly
+
+
+@has_basepay
+def test_top_of_scale_is_detected_and_explained():
+    t = BP.load(2026)
+    capped = BP.lookup("E-5", 30, t)          # E-5 flats at over 12
+    assert capped.at_top_of_grade
+    assert "top of its basic pay scale" in capped.note
+
+    rising = BP.lookup("E-7", 6, t)
+    assert not rising.at_top_of_grade
+    assert rising.next_raise_at_years > 6
+
+
+@has_basepay
+def test_sanity_check_passes_the_installed_table():
+    assert BP.sanity_check(BP.load(2026)) == []
+
+
+@has_basepay
+def test_apply_raise_scales_the_whole_table():
+    t = BP.load(2026)
+    rolled = BP.apply_raise(t, 0.038, 2027)
+    a = BP.lookup("E-5", 6, t).monthly
+    b = BP.lookup("E-5", 6, rolled).monthly
+    assert b == pytest.approx(a * 1.038, rel=1e-6)
+    assert rolled.year == 2027
+
+
+# ==========================================================================
+# Drill pay
+# ==========================================================================
+
+@has_basepay
+def test_drill_pay_matches_the_published_figures():
+    """
+    The published drill table is derived, not independent: one drill is 1/30 of
+    monthly basic pay. E-1 under four months at $2,225.70 gives $74.19 a drill
+    and $296.76 a weekend, exactly as DFAS prints it.
+    """
+    r = BP.drill_pay("E-1", 0, BP.load(2026), override_monthly=2225.70)
+    assert r.per_drill == pytest.approx(74.19, abs=0.01)
+    assert r.per_weekend == pytest.approx(296.76, abs=0.02)
+
+    o7 = BP.drill_pay("O-7", 0, BP.load(2026))
+    assert o7.per_drill == pytest.approx(384.67, abs=0.01)
+
+
+@has_basepay
+def test_drill_pay_annualises_twelve_weekends():
+    r = BP.drill_pay("E-5", 6, BP.load(2026))
+    assert r.annual_48_drills == pytest.approx(r.per_drill * 48)
+    assert r.per_weekend == pytest.approx(r.per_drill * 4)
+
+
+@has_basepay
+def test_drill_pay_note_warns_there_is_no_bah_or_bas():
+    note = BP.drill_pay("E-5", 6, BP.load(2026)).note
+    assert "no BAH or BAS" in note
+    assert "30 days" in note
+
+
+def test_drill_pay_without_a_table_reports_the_problem():
+    r = BP.drill_pay("E-5", 6, None)
+    assert not r.found and r.note

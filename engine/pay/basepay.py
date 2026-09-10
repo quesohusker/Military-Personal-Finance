@@ -212,3 +212,55 @@ def sanity_check(table: BasePayTable) -> list[str]:
             problems.append("E-1 out-earns O-1 at entry; the table looks shifted.")
 
     return problems
+
+
+# --------------------------------------------------------------------------
+# Drill pay
+# --------------------------------------------------------------------------
+
+DRILLS_PER_WEEKEND = 4
+DRILL_DIVISOR = 30      # a drill period is 1/30 of monthly basic pay
+
+
+@dataclass
+class DrillPayResult:
+    found: bool = False
+    per_drill: float = 0.0
+    per_weekend: float = 0.0
+    annual_48_drills: float = 0.0
+    monthly_basic_pay: float = 0.0
+    grade: str = ""
+    note: str = ""
+
+
+def drill_pay(grade: str, years_of_service: float,
+              table: BasePayTable | None = None,
+              override_monthly: float = 0.0,
+              drills_per_year: int = 48) -> DrillPayResult:
+    """
+    Guard and Reserve drill pay.
+
+    There is no separate drill pay table -- DFAS publishes one, but every figure
+    in it is derived: a drill period pays 1/30 of monthly basic pay, and a
+    standard drill weekend is four periods. Confirmed against the published
+    table: an E-1 under four months at $2,225.70 a month gives $74.19 a drill
+    and $296.76 a weekend, exactly as printed.
+
+    `drills_per_year` defaults to 48 -- twelve weekends. Annual training is paid
+    separately as active duty and is not included here.
+    """
+    base = lookup(grade, years_of_service, table, override_monthly)
+    if not base.found:
+        return DrillPayResult(grade=base.grade, note=base.note)
+
+    per_drill = base.monthly / DRILL_DIVISOR
+    return DrillPayResult(
+        found=True, per_drill=per_drill,
+        per_weekend=per_drill * DRILLS_PER_WEEKEND,
+        annual_48_drills=per_drill * drills_per_year,
+        monthly_basic_pay=base.monthly, grade=base.grade,
+        note=("A drill period pays one thirtieth of monthly basic pay; a drill "
+              "weekend is four periods. Drill pay carries no BAH or BAS — those "
+              "are paid only on active orders, and BAH only on orders of more "
+              "than 30 days. Annual training is paid separately as active duty."),
+    )
