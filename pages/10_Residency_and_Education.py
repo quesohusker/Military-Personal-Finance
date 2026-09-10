@@ -27,8 +27,16 @@ with inputs:
                            if h.state_of_legal_residence in D.STATE_NAMES else 0,
                            key=wkey("slr2"))
         h.state_of_legal_residence = slr
+        # Compare against where you are actually stationed. Texas is only
+        # the fallback for a blank or unrecognised duty state.
+        duty = (h.current_state or "").strip().lower()
+        alt_default = next((n for n in D.STATE_NAMES if n.lower() == duty),
+                           "Texas")
         alt = st.selectbox("Which state do you want to compare with?", D.STATE_NAMES,
-                           index=D.STATE_NAMES.index("Texas"), key=wkey("altstate"))
+                           index=D.STATE_NAMES.index(alt_default),
+                           key=wkey("altstate"),
+                           help="Defaults to the state you live in now, from "
+                                "Who I am.")
 
     with input_card("What you earn, and for how long"):
         # Derived, not typed: the Pay page already knows this number.
