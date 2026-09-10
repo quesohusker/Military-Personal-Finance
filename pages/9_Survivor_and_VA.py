@@ -21,67 +21,67 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Survivor Benefit Plan"):
-        toggle("SBP elected", m, "sbp_elected", key=wkey("sbpel"))
-        money("Retired pay, per month", m, "retired_pay_monthly",
+    with input_card("Your SBP election"):
+        toggle("Have you elected SBP?", m, "sbp_elected", key=wkey("sbpel"))
+        money("What is your retired pay, per month?", m, "retired_pay_monthly",
               key=wkey("rp"), step=100.0)
-        base = st.number_input("Base amount elected (0 = full retired pay)",
+        base = st.number_input("What base amount did you elect? (0 = full)",
                                value=0.0, min_value=0.0, step=100.0,
                                format="%.2f", key=wkey("sbpbase"))
 
-    with input_card("Ages and life expectancy"):
-        ret_age = st.number_input("Age at retirement", value=int(max(38, m.age())),
+    with input_card("How long will you both live?"):
+        ret_age = st.number_input("How old are you when you retire?", value=int(max(38, m.age())),
                                   min_value=30, max_value=70, key=wkey("sra"))
-        my_life = st.number_input("Your life expectancy", value=82,
+        my_life = st.number_input("How long do you expect to live?", value=82,
                                   min_value=60, max_value=105, key=wkey("mylife"))
-        sp_life = st.number_input("Survivor's life expectancy", value=90,
+        sp_life = st.number_input("How long do you expect your survivor to live?", value=90,
                                   min_value=60, max_value=110, key=wkey("splife"),
                                   help="SBP's value is concentrated in the case "
                                        "where your survivor lives a long time — "
                                        "which is exactly what insurance is for. "
                                        "Move this and watch the ratio.")
-        sp_age = st.number_input("Survivor's age at your retirement",
+        sp_age = st.number_input("How old will your survivor be then?",
                                  value=int(max(30, ret_age - 2)),
                                  min_value=20, max_value=90, key=wkey("spage"))
 
-    with input_card("Tax rates and DIC"):
-        my_rate = st.select_slider("Your marginal rate",
+    with input_card("Your tax rates and DIC"):
+        my_rate = st.select_slider("What tax rate do you pay?",
                                    options=[0.10, 0.12, 0.22, 0.24, 0.32, 0.35],
                                    value=0.22, format_func=lambda v: f"{v*100:.0f}%",
                                    key=wkey("myrate"))
-        sp_rate = st.select_slider("Survivor's marginal rate",
+        sp_rate = st.select_slider("What tax rate would your survivor pay?",
                                    options=[0.10, 0.12, 0.22, 0.24, 0.32],
                                    value=0.12, format_func=lambda v: f"{v*100:.0f}%",
                                    key=wkey("sprate"),
                                    help="Filing single after your death, so "
                                         "brackets are roughly half as wide.")
-        dic = st.toggle("Survivor would qualify for DIC", value=False,
+        dic = st.toggle("Would your survivor qualify for DIC?", value=False,
                         key=wkey("dicq"),
                         help="Generally applies if you were rated totally "
                              "disabled for the qualifying period, or die of a "
                              "service-connected cause.")
 
-    with input_card("VA rating"):
-        integer("VA rating (%)", m, "va_rating", key=wkey("var2"), max_value=100,
+    with input_card("Your VA rating"):
+        integer("What is your VA rating? (%)", m, "va_rating", key=wkey("var2"), max_value=100,
                 step=10)
-        combat = st.toggle("Some disabilities may be combat-related", value=False,
+        combat = st.toggle("Are any disabilities combat-related?", value=False,
                            key=wkey("combatrel"),
                            help="Armed conflict, hazardous service, an "
                                 "instrumentality of war, or training simulating "
                                 "war. Your branch makes the determination, not "
                                 "you — if in doubt, apply.")
-        ch61 = st.toggle("Chapter 61 medical retirement", value=False,
+        ch61 = st.toggle("Is this a Chapter 61 medical retirement?", value=False,
                          key=wkey("ch61"))
 
-    with input_card("CRDP and CRSC estimates"):
-        crdp_amt = st.number_input("Estimated CRDP, per month", value=0.0,
+    with input_card("What CRDP and CRSC would you get?"):
+        crdp_amt = st.number_input("What CRDP do you expect, per month?", value=0.0,
                                    min_value=0.0, step=50.0, format="%.2f",
                                    key=wkey("crdpamt"))
-        crsc_amt = st.number_input("Estimated CRSC, per month", value=0.0,
+        crsc_amt = st.number_input("What CRSC do you expect, per month?", value=0.0,
                                    min_value=0.0, step=50.0, format="%.2f",
                                    key=wkey("crscamt"))
         combined = st.select_slider(
-            "Your combined federal + state marginal rate",
+            "What is your combined federal + state rate?",
             options=[0.10, 0.15, 0.22, 0.24, 0.27, 0.29, 0.32, 0.37],
             value=0.24, format_func=lambda v: f"{v*100:.0f}%",
             key=wkey("crrate"))

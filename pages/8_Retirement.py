@@ -31,35 +31,35 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Retirement assumptions"):
-        h3 = st.number_input("High-3 monthly basic pay",
+    with input_card("When you plan to retire"):
+        h3 = st.number_input("What is your High-3 monthly basic pay?",
                              value=float(bp.monthly if bp.found else 5000.0),
                              min_value=0.0, step=100.0, format="%.2f",
                              key=wkey("h3"),
                              help="The average of your highest 36 months of "
                                   "BASIC pay — not total compensation, and not "
                                   "including BAH or BAS.")
-        at_years = st.number_input("Years of service at retirement",
+        at_years = st.number_input("How many years will you have served?",
                                    value=float(max(20.0, m.years_of_service)),
                                    min_value=0.0, max_value=42.0, step=1.0,
                                    format="%.1f", key=wkey("retyos"))
-        ret_age = st.number_input("Age at retirement",
+        ret_age = st.number_input("How old will you be when you retire?",
                                   value=int(max(38, m.age() + max(0, at_years - m.years_of_service))),
                                   min_value=30, max_value=70, step=1,
                                   key=wkey("retage"))
-        life = st.number_input("Life expectancy", value=90, min_value=65,
+        life = st.number_input("How long do you expect to live?", value=90, min_value=65,
                                max_value=110, step=1, key=wkey("life"))
-        disc = st.number_input("Real discount rate (%)", value=3.0,
+        disc = st.number_input("What real discount rate should we use? (%)", value=3.0,
                                min_value=0.0, max_value=10.0, step=0.25,
                                format="%.2f", key=wkey("rdisc"))
 
     if system == S.SYS_BRS:
-        with input_card("The lump-sum election"):
-            share = st.radio("Share taken as cash", [0.25, 0.50],
+        with input_card("Would you take the lump sum?"):
+            share = st.radio("How much would you take as cash?", [0.25, 0.50],
                              format_func=lambda v: f"{v * 100:.0f}%",
                              key=wkey("lsshare"))
             tax = st.select_slider(
-                "Your marginal rate in the year you take it",
+                "What tax rate will you pay that year?",
                 options=[0.12, 0.22, 0.24, 0.32, 0.35, 0.37], value=0.32,
                 format_func=lambda v: f"{v * 100:.0f}%", key=wkey("lstax"),
                 help="It arrives fully taxable in a single year, usually on top "

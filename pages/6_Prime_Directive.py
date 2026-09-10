@@ -20,8 +20,8 @@ inputs, results = two_pane()
 # Left: the only thing there is to set on this page.
 # ==========================================================================
 with inputs:
-    with input_card("What to show"):
-        show_na = st.toggle("Show steps that do not apply to you", value=True,
+    with input_card("What do you want to see?"):
+        show_na = st.toggle("Show steps that do not apply to you?", value=True,
                             key=wkey("show_na"),
                             help="Steps are marked not applicable with a reason. Those "
                                  "reasons are often the most useful thing on the page — "

@@ -22,17 +22,17 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Where you pay tax"):
-        slr = st.selectbox("Your state of legal residence", D.STATE_NAMES,
+    with input_card("Where do you pay tax?"):
+        slr = st.selectbox("Which state is your legal residence?", D.STATE_NAMES,
                            index=D.STATE_NAMES.index(h.state_of_legal_residence)
                            if h.state_of_legal_residence in D.STATE_NAMES else 0,
                            key=wkey("slr2"))
         h.state_of_legal_residence = slr
-        alt = st.selectbox("Compare against", D.STATE_NAMES,
+        alt = st.selectbox("Which state do you want to compare with?", D.STATE_NAMES,
                            index=D.STATE_NAMES.index("Texas"), key=wkey("altstate"))
 
-    with input_card("Pay and years"):
-        taxable_pay = st.number_input("Annual TAXABLE military pay",
+    with input_card("What you earn, and for how long"):
+        taxable_pay = st.number_input("What is your TAXABLE military pay, per year?",
                                       value=float(m.basic_pay_monthly_override * 12
                                                   or 60_000.0),
                                       min_value=0.0, step=1000.0, format="%.0f",
@@ -40,15 +40,15 @@ with inputs:
                                       help="Basic pay and taxable special pays. "
                                            "NOT BAH or BAS — those are outside "
                                            "state income tax too.")
-        ad_years = st.number_input("Years you will serve", value=20.0,
+        ad_years = st.number_input("How many years will you serve?", value=20.0,
                                    min_value=0.0, max_value=42.0, step=1.0,
                                    key=wkey("adyrs"))
-        ret_years = st.number_input("Years you will draw retired pay", value=30.0,
+        ret_years = st.number_input("How many years will you draw retired pay?", value=30.0,
                                     min_value=0.0, max_value=60.0, step=1.0,
                                     key=wkey("retyrs"))
 
-    with input_card("State ranking"):
-        sp_inc = st.number_input("Include a spouse's annual income",
+    with input_card("How the states rank for you"):
+        sp_inc = st.number_input("What does your spouse earn, per year?",
                                  value=float(h.spouse_income.annual_income),
                                  min_value=0.0, step=1000.0, format="%.0f",
                                  key=wkey("spincrank"),
@@ -56,24 +56,24 @@ with inputs:
                                       "exempt military pay from states with no "
                                       "income tax at all.")
 
-    with input_card("School"):
-        school = st.selectbox("School type", GI.SCHOOL_TYPES, key=wkey("school"))
-        tuition = st.number_input("Annual tuition and fees", value=12_000.0,
+    with input_card("Where will you study?"):
+        school = st.selectbox("What kind of school is it?", GI.SCHOOL_TYPES, key=wkey("school"))
+        tuition = st.number_input("What are tuition and fees, per year?", value=12_000.0,
                                   min_value=0.0, step=500.0, format="%.0f",
                                   key=wkey("tuition"))
-        school_zip = st.text_input("School ZIP code", value="", key=wkey("schoolzip"),
+        school_zip = st.text_input("What is the school ZIP code?", value="", key=wkey("schoolzip"),
                                    placeholder="78712",
                                    help="Housing pays the E-5-with-dependents "
                                         "BAH rate at the SCHOOL's location — not "
                                         "yours, and not your pay grade.")
 
-    with input_card("Who uses the GI Bill"):
-        child_age = st.number_input("Child's age (0 if transferring to a spouse)",
+    with input_card("Who will use the GI Bill?"):
+        child_age = st.number_input("How old is your child? (0 for a spouse)",
                                     value=14, min_value=0, max_value=30,
                                     key=wkey("childage"))
-        has_degree = st.toggle("You already have the degree you need",
+        has_degree = st.toggle("Do you already have the degree you need?",
                                value=False, key=wkey("hasdegree"))
-        still_in = st.toggle("Still serving", value=m.is_serving, key=wkey("stillin"))
+        still_in = st.toggle("Are you still serving?", value=m.is_serving, key=wkey("stillin"))
 
 # ==========================================================================
 # The maths, once the answers are in.

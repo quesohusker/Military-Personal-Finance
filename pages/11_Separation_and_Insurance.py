@@ -24,90 +24,90 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("The disability rating"):
-        dod = st.slider("DoD disability rating", 0, 100, 20, step=10,
+    with input_card("Your rating and your pay"):
+        dod = st.slider("What is your DoD disability rating?", 0, 100, 20, step=10,
                         key=wkey("dodr"),
                         help="Only the conditions that make you unfit for "
                              "duty. This is NOT your VA rating and the two "
                              "routinely differ.")
-        yos = st.number_input("Years of service at separation",
+        yos = st.number_input("How many years will you have served?",
                               value=float(m.years_of_service), min_value=0.0,
                               max_value=40.0, step=0.5, key=wkey("dsyos"))
-        h3 = st.number_input("High-3 monthly basic pay",
+        h3 = st.number_input("What is your High-3 monthly basic pay?",
                              value=float(basic or 4_110.0), min_value=0.0,
                              step=50.0, key=wkey("dsh3"),
                              help="Average of your highest 36 months of basic "
                                   "pay. Basic pay only — no BAH, no BAS.")
 
-    with input_card("Age and VA compensation"):
-        sep_age = st.number_input("Age at separation",
+    with input_card("Your age and VA compensation"):
+        sep_age = st.number_input("How old will you be when you separate?",
                                   value=int(max(20, m.age())),
                                   min_value=17, max_value=70, key=wkey("dsage"))
-        life_exp = st.number_input("Life expectancy", value=85, min_value=50,
+        life_exp = st.number_input("How long do you expect to live?", value=85, min_value=50,
                                    max_value=105, key=wkey("dslife"))
-        va_comp = st.number_input("Expected VA compensation, per month",
+        va_comp = st.number_input("What VA pay do you expect, per month?",
                                   value=float(m.va_disability_monthly or 1_400.0),
                                   min_value=0.0, step=50.0, key=wkey("dsvac"),
                                   help="Used to work out how many months of VA "
                                        "payments are withheld to recoup a "
                                        "severance.")
 
-    with input_card("Circumstances"):
-        combat = st.toggle("Combat-related disability", value=False,
+    with input_card("About your separation"):
+        combat = st.toggle("Is the disability combat-related?", value=False,
                            key=wkey("dscr"),
                            help="A combat-related determination generally "
                                 "stops the severance being recouped. It is "
                                 "worth the entire severance, so make sure it "
                                 "is made and documented.")
-        czone = st.toggle("Incurred in a combat zone", value=False,
+        czone = st.toggle("Did it happen in a combat zone?", value=False,
                           key=wkey("dscz"),
                           help="Makes the severance tax-free. It is commonly "
                                "withheld at source anyway and then has to be "
                                "recovered by amending the return.")
-        tdrl = st.toggle("Placed on the TDRL", value=False, key=wkey("dstdrl"),
+        tdrl = st.toggle("Were you placed on the TDRL?", value=False, key=wkey("dstdrl"),
                          help="Temporary list. Retired pay is paid now, but "
                               "the rating is re-evaluated for up to three "
                               "years.")
-        brs = st.toggle("Blended Retirement System", value=m.opted_into_brs,
+        brs = st.toggle("Are you in the Blended Retirement System?", value=m.opted_into_brs,
                         key=wkey("dsbrs"))
 
-    with input_card("Life insurance"):
-        cover = st.number_input("Coverage wanted", value=float(m.sgli_coverage
-                                                               or LI.SGLI_MAX),
+    with input_card("About your life insurance"):
+        cover = st.number_input("How much coverage do you want?", value=float(m.sgli_coverage
+                                                                              or LI.SGLI_MAX),
                                 min_value=0.0, max_value=LI.VGLI_MAX,
                                 step=50_000.0, key=wkey("licov"))
-        li_age = st.number_input("Age at separation", value=int(sep_age),
+        li_age = st.number_input("How old will you be when you separate?", value=int(sep_age),
                                  min_value=17, max_value=70, key=wkey("liage"))
-        to_age = st.number_input("Compare through age", value=70, min_value=30,
+        to_age = st.number_input("Compare through what age?", value=70, min_value=30,
                                  max_value=100, key=wkey("lito"))
-        term_yrs = st.select_slider("Level term length", options=[10, 15, 20, 30],
+        term_yrs = st.select_slider("How long should the term be?", options=[10, 15, 20, 30],
                                     value=20, key=wkey("literm"))
-        insurable = st.toggle("Commercial coverage is realistically available",
+        insurable = st.toggle("Could you get commercial coverage?",
                               value=True, key=wkey("liins"),
                               help="Turn this off if a health condition would "
                                    "make you uninsurable or rated. It changes "
                                    "the answer completely.")
 
-    with input_card("How much cover you need"):
-        inc = st.number_input("Annual income to replace", value=80_000.0,
+    with input_card("How much cover do you need?"):
+        inc = st.number_input("What income should it replace, per year?", value=80_000.0,
                               min_value=0.0, step=5_000.0, key=wkey("nincome"))
-        yrs = st.number_input("Years to replace it for", value=25.0,
+        yrs = st.number_input("For how many years?", value=25.0,
                               min_value=0.0, max_value=60.0, step=1.0,
                               key=wkey("nyears"))
-        mort = st.number_input("Mortgage balance to clear",
+        mort = st.number_input("What mortgage balance would it clear?",
                                value=float(h.mortgage_balance), min_value=0.0,
                                step=10_000.0, key=wkey("nmort"))
-        edu = st.number_input("Education to fund", value=0.0, min_value=0.0,
+        edu = st.number_input("How much education should it fund?", value=0.0, min_value=0.0,
                               step=10_000.0, key=wkey("nedu"))
-        surv = st.number_input("Survivor's guaranteed annual income",
+        surv = st.number_input("What is your survivor guaranteed, per year?",
                                value=0.0, min_value=0.0, step=5_000.0,
                                key=wkey("nsurv"),
                                help="SBP plus DIC plus Social Security "
                                     "survivor benefits. This is the number "
                                     "most needs calculators leave out.")
-        liquid = st.number_input("Liquid assets available", value=0.0,
+        liquid = st.number_input("What liquid assets are available?", value=0.0,
                                  min_value=0.0, step=10_000.0, key=wkey("nliq"))
-        have = st.number_input("Coverage you already have", value=float(cover),
+        have = st.number_input("How much coverage do you already have?", value=float(cover),
                                min_value=0.0, step=50_000.0, key=wkey("nhave"))
 
 # ==========================================================================

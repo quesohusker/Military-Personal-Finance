@@ -38,8 +38,8 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Career timeline"):
-        sep = st.slider("Separate or retire at", min_value=max(2.0, START + 1),
+    with input_card("When you separate and promote"):
+        sep = st.slider("When do you separate or retire?", min_value=max(2.0, START + 1),
                         max_value=42.0, value=float(max(END, START + 1)),
                         step=1.0, key=wkey("sepslider"), format="%g yrs")
         if sep != t.separation_at_years_of_service:
@@ -68,7 +68,7 @@ with inputs:
             t.promotions = []
             st.rerun()
 
-    with input_card("Planned moves"):
+    with input_card("Where are you moving next?"):
         move_rows = [{"At YOS": mv.at_years_of_service, "ZIP": mv.destination_zip,
                       "Label": mv.destination_label,
                       "Into quarters": mv.into_government_housing}
@@ -99,30 +99,30 @@ with inputs:
             t.moves = moves
             mark_dirty(); invalidate(); st.rerun()
 
-    with input_card("Compare two ZIPs"):
-        from_zip = st.text_input("From ZIP", value=m.duty_zip or "",
+    with input_card("Want to compare two ZIP codes?"):
+        from_zip = st.text_input("Which ZIP are you moving from?", value=m.duty_zip or "",
                                  key=wkey("fz"), placeholder="73503")
-        to_zip = st.text_input("To ZIP", value="", key=wkey("tz"),
+        to_zip = st.text_input("Which ZIP are you moving to?", value="", key=wkey("tz"),
                                placeholder="92134")
 
-    with input_card("Spouse income"):
-        toggle("Spouse is employed", si, "employed", key=wkey("spemp"))
-        toggle("Dual military", si, "is_dual_military", key=wkey("spdual"),
+    with input_card("About your spouse"):
+        toggle("Is your spouse employed?", si, "employed", key=wkey("spemp"))
+        toggle("Are you both in the military?", si, "is_dual_military", key=wkey("spdual"),
                help="Both on orders, so a PCS does not stop either income.")
-        money("Annual income", si, "annual_income", key=wkey("spinc"), step=1000.0)
-        choice("Career type", si, "career_type", SP.CAREER_TYPES,
+        money("What do they earn, per year?", si, "annual_income", key=wkey("spinc"), step=1000.0)
+        choice("What kind of work does your spouse do?", si, "career_type", SP.CAREER_TYPES,
                key=wkey("spcareer"),
                help="How well the work survives a move is the whole question.")
-        number("Months out of work per move", si, "months_unemployed_per_pcs",
+        number("How many months out of work per move?", si, "months_unemployed_per_pcs",
                key=wkey("spmonths"), min_value=0.0, max_value=24.0, step=0.5)
-        pct("Pay reset per move (%)", si, "wage_reset_on_move", key=wkey("spreset"),
+        pct("How far does pay fall on a move? (%)", si, "wage_reset_on_move", key=wkey("spreset"),
             step=1.0, max_value=60.0,
             help="How far pay falls on landing in a new market, before "
                  "rebuilding.")
-        pct("Spouse retirement contribution (%)", si,
+        pct("How much goes to retirement? (%)", si,
             "retirement_contribution_pct", key=wkey("spret"), step=0.5,
             max_value=50.0)
-        pct("Employer match (%)", si, "employer_match_pct", key=wkey("spmatch"),
+        pct("What does the employer match? (%)", si, "employer_match_pct", key=wkey("spmatch"),
             step=0.5, max_value=25.0)
 
 # ==========================================================================

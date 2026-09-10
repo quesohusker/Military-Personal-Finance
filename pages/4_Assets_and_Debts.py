@@ -21,32 +21,32 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Cash and investments"):
-        money("Cash and savings", h, "cash_savings", key=wkey("cash"), step=500.0)
-        money("Monthly expenses", h, "monthly_expenses", key=wkey("expenses"),
+    with input_card("What you own and what you spend"):
+        money("How much is in cash and savings?", h, "cash_savings", key=wkey("cash"), step=500.0)
+        money("What do you spend in a month?", h, "monthly_expenses", key=wkey("expenses"),
               step=100.0, help="Everything you spend in a month, excluding income "
                                "tax. Used to size your emergency fund.")
-        money("Taxable brokerage", h, "taxable_brokerage", key=wkey("brok"), step=1000.0)
-        money("Other assets", h, "other_assets", key=wkey("otherassets"), step=1000.0)
-        money("Home value", h, "home_value", key=wkey("home"), step=5000.0)
-        money("Vehicles", h, "vehicles_value", key=wkey("vehicles"), step=1000.0)
+        money("What is in your brokerage?", h, "taxable_brokerage", key=wkey("brok"), step=1000.0)
+        money("Any other assets?", h, "other_assets", key=wkey("otherassets"), step=1000.0)
+        money("What is your home worth?", h, "home_value", key=wkey("home"), step=5000.0)
+        money("What are your cars worth?", h, "vehicles_value", key=wkey("vehicles"), step=1000.0)
 
-    with input_card("Retirement accounts"):
-        money("Traditional TSP", m, "tsp_traditional_balance", key=wkey("tsptrad"),
+    with input_card("What have you saved for retirement?"):
+        money("How much is in traditional TSP?", m, "tsp_traditional_balance", key=wkey("tsptrad"),
               step=1000.0)
-        money("Roth TSP", m, "tsp_roth_balance", key=wkey("tsproth"), step=1000.0)
-        money("Traditional IRA", m, "ira_traditional_balance", key=wkey("iratrad"),
+        money("How much is in Roth TSP?", m, "tsp_roth_balance", key=wkey("tsproth"), step=1000.0)
+        money("How much is in traditional IRA?", m, "ira_traditional_balance", key=wkey("iratrad"),
               step=1000.0)
-        money("Roth IRA", m, "ira_roth_balance", key=wkey("iraroth"), step=1000.0)
+        money("How much is in Roth IRA?", m, "ira_roth_balance", key=wkey("iraroth"), step=1000.0)
 
-    with input_card("Mortgage"):
-        money("Mortgage balance", h, "mortgage_balance", key=wkey("mortgage"),
+    with input_card("Do you have a mortgage?"):
+        money("How much do you still owe?", h, "mortgage_balance", key=wkey("mortgage"),
               step=1000.0)
 
-    with input_card("Assumptions"):
-        life_exp = st.number_input("Life expectancy", value=90, min_value=60,
+    with input_card("What should we assume?"):
+        life_exp = st.number_input("How long do you expect to live?", value=90, min_value=60,
                                    max_value=110, step=1, key=wkey("lifeexp"))
-        disc = st.number_input("Real discount rate for income streams (%)",
+        disc = st.number_input("Assume a real discount rate of (%)",
                                value=3.0, min_value=0.0, max_value=10.0, step=0.25,
                                format="%.2f", key=wkey("disc"),
                                help="A REAL rate, because military retired pay and "

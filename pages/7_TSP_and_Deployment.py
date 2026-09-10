@@ -45,34 +45,34 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("TSP contributions"):
-        pct("Your TSP contribution (% of basic pay)", m, "tsp_contribution_pct",
+    with input_card("What you put into the TSP"):
+        pct("How much do you contribute? (% of basic pay)", m, "tsp_contribution_pct",
             key=wkey("tsppct"), step=1.0, max_value=92.0,
             help="TSP elections are a percentage of BASIC PAY — not of your total "
                  "compensation, and not of BAH or BAS.")
-        pct("Share going to Roth", m, "tsp_roth_share", key=wkey("rothshare"),
+        pct("What share goes to Roth?", m, "tsp_roth_share", key=wkey("rothshare"),
             step=5.0, max_value=100.0)
 
-    with input_card("Traditional or Roth"):
-        marginal = st.select_slider("Your current marginal federal bracket",
+    with input_card("Traditional or Roth?"):
+        marginal = st.select_slider("What is your federal tax bracket now?",
                                     options=[0.10, 0.12, 0.22, 0.24, 0.32, 0.35, 0.37],
                                     value=0.12, format_func=lambda v: f"{v*100:.0f}%",
                                     key=wkey("marg"))
-        expected = st.select_slider("Bracket you expect in retirement",
+        expected = st.select_slider("What bracket do you expect in retirement?",
                                     options=[0.10, 0.12, 0.22, 0.24, 0.32, 0.35, 0.37],
                                     value=0.22, format_func=lambda v: f"{v*100:.0f}%",
                                     key=wkey("expmarg"))
 
-    with input_card("Deployment"):
-        toggle("Deployed to a combat zone", m, "in_combat_zone", key=wkey("cz2"))
-        integer("Qualifying months in the zone", m, "months_deployed_this_year",
+    with input_card("Are you deployed?"):
+        toggle("Are you in a combat zone?", m, "in_combat_zone", key=wkey("cz2"))
+        integer("How many qualifying months in the zone?", m, "months_deployed_this_year",
                 key=wkey("czmo"), max_value=12,
                 help="Any part of a month in the zone counts as a whole month. A "
                      "deployment from 1 January to 1 July is SEVEN qualifying "
                      "months, not six.")
-        toggle("Drawing hostile fire / imminent danger pay", m,
+        toggle("Drawing hostile fire or imminent danger pay?", m,
                "drawing_hostile_fire_pay", key=wkey("hfp2"))
-        money("Current SDP balance", m, "sdp_balance", key=wkey("sdp2"), step=500.0)
+        money("What is your SDP balance?", m, "sdp_balance", key=wkey("sdp2"), step=500.0)
 
 # ==========================================================================
 # The arithmetic, once every answer is in.

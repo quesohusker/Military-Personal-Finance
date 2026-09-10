@@ -26,96 +26,96 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Service"):
-        choice("Component", m, "component", COMPONENTS, key=wkey("comp"))
-        choice("Branch", m, "branch", G.BRANCHES, key=wkey("branch"))
-        choice("Pay grade", m, "grade", G.GRADE_LABELS, key=wkey("grade"),
+    with input_card("About your service"):
+        choice("What component are you in?", m, "component", COMPONENTS, key=wkey("comp"))
+        choice("Which branch?", m, "branch", G.BRANCHES, key=wkey("branch"))
+        choice("What is your pay grade?", m, "grade", G.GRADE_LABELS, key=wkey("grade"),
                help="O-1E, O-2E and O-3E are for officers with at least four "
                     "years of prior enlisted or warrant service. They are paid "
                     "on a separate, higher line.")
-        number("Years of service", m, "years_of_service", key=wkey("yos"),
+        number("How many years have you served?", m, "years_of_service", key=wkey("yos"),
                min_value=0.0, max_value=45.0, step=0.5)
-        number("Years in current grade", m, "time_in_grade_years",
+        number("How long in your current grade?", m, "time_in_grade_years",
                key=wkey("tig"), min_value=0.0, max_value=30.0, step=0.5)
-        integer("Birth year", m, "birth_year", key=wkey("by"),
+        integer("What year were you born?", m, "birth_year", key=wkey("by"),
                 min_value=1930, max_value=2010)
 
-    with input_card("DIEMS date"):
-        text("DIEMS date (YYYY-MM-DD)", m, "diems_date", key=wkey("diems"),
+    with input_card("When you first joined"):
+        text("What is your DIEMS date? (YYYY-MM-DD)", m, "diems_date", key=wkey("diems"),
              help="Date of Initial Entry to Military Service — the day you "
                   "first swore in, including at an academy or in ROTC "
                   "contracted status. It is on your LES and your DD-214. It is "
                   "NOT the date you started your current period of service.")
         if m.diems and m.diems < DIEMS_BRS_START:
-            toggle("I opted into BRS in the 2018 window", m, "opted_into_brs",
+            toggle("Did you opt into BRS in the 2018 window?", m, "opted_into_brs",
                    key=wkey("brsopt"))
-            toggle("I took the CSB/REDUX bonus at 15 years", m,
+            toggle("Did you take the CSB/REDUX bonus at 15 years?", m,
                    "took_csb_redux", key=wkey("csb"),
                    help="No new elections have been possible since 2017. This "
                         "is a historical fact to record, not a decision to "
                         "make.")
 
-    with input_card("Household and location"):
-        toggle("Married", h, "has_spouse", key=wkey("married"))
-        integer("Dependents", h, "n_dependents", key=wkey("deps"), max_value=15)
-        toggle("Dependents for pay purposes", m, "has_dependents",
+    with input_card("Your household and where you are"):
+        toggle("Are you married?", h, "has_spouse", key=wkey("married"))
+        integer("How many dependents?", h, "n_dependents", key=wkey("deps"), max_value=15)
+        toggle("Do you have dependents for pay purposes?", m, "has_dependents",
                key=wkey("hasdep"),
                help="BAH is binary: with or without dependents. The number of "
                     "dependents does not change the rate.")
-        toggle("I live in government housing", m,
+        toggle("Do you live in government housing?", m,
                "lives_in_government_housing", key=wkey("govqtrs"),
                help="On-base or privatized housing. BAH is paid to the housing "
                     "partner rather than to you, so your out-of-pocket is zero "
                     "and so is the allowance you keep.")
-        text("Duty station ZIP code", m, "duty_zip", key=wkey("zip"),
+        text("What is your duty station ZIP code?", m, "duty_zip", key=wkey("zip"),
              placeholder="28310",
              help="Drives your BAH. Leave blank if you do not know where you "
                   "are going yet — the app will use a national median instead.")
-        text("State of legal residence", h, "state_of_legal_residence",
+        text("Which state is your legal residence?", h, "state_of_legal_residence",
              key=wkey("slr"),
              help="Where you pay income tax. Under SCRA you do not acquire a "
                   "new domicile just by being stationed somewhere.")
-        text("State where I currently live", h, "current_state",
+        text("Which state do you live in now?", h, "current_state",
              key=wkey("curstate"))
 
-    with input_card("Deployment"):
-        toggle("Currently deployed", m, "is_deployed", key=wkey("deployed"))
-        integer("Months deployed this year", m, "months_deployed_this_year",
+    with input_card("Are you deployed?"):
+        toggle("Are you deployed right now?", m, "is_deployed", key=wkey("deployed"))
+        integer("How many months deployed this year?", m, "months_deployed_this_year",
                 key=wkey("depmo"), max_value=12)
-        toggle("Drawing hostile fire / imminent danger pay", m,
+        toggle("Drawing hostile fire or imminent danger pay?", m,
                "drawing_hostile_fire_pay", key=wkey("hfp"),
                help="This is what gates Savings Deposit Program eligibility, "
                     "not deployment on its own.")
-        toggle("In a designated combat zone", m, "in_combat_zone",
+        toggle("Are you in a designated combat zone?", m, "in_combat_zone",
                key=wkey("czte"),
                help="Drives the Combat Zone Tax Exclusion. Any part of a month "
                     "in the zone counts as a full month.")
-        money("SDP balance", m, "sdp_balance", key=wkey("sdp"), step=500.0)
+        money("What is your SDP balance?", m, "sdp_balance", key=wkey("sdp"), step=500.0)
 
     show_retiree = (m.component in (RETIRED,) or m.retired_pay_monthly > 0
                     or m.va_disability_monthly > 0)
     if show_retiree:
-        with input_card("Retired pay and VA"):
-            money("Retired pay, per month (gross)", m, "retired_pay_monthly",
+        with input_card("Your retired pay and VA"):
+            money("What is your gross retired pay, per month?", m, "retired_pay_monthly",
                   key=wkey("retpay"), step=100.0)
-            toggle("SBP elected", m, "sbp_elected", key=wkey("sbp"))
-            money("VA compensation, per month", m, "va_disability_monthly",
+            toggle("Did you elect SBP?", m, "sbp_elected", key=wkey("sbp"))
+            money("What is your VA compensation, per month?", m, "va_disability_monthly",
                   key=wkey("va"), step=50.0,
                   help="Tax-free at federal and state level.")
-            integer("VA rating (%)", m, "va_rating", key=wkey("varate"),
+            integer("What is your VA rating? (%)", m, "va_rating", key=wkey("varate"),
                     max_value=100, step=10)
-            toggle("CRDP applies (20+ years, 50%+ rating)", m, "crdp_applies",
+            toggle("Does CRDP apply? (20+ years, 50%+ rating)", m, "crdp_applies",
                    key=wkey("crdp"),
                    help="With concurrent receipt your retired pay is not "
                         "reduced by your VA compensation — you receive both in "
                         "full.")
-            money("CRSC, per month", m, "crsc_monthly", key=wkey("crsc"),
+            money("What CRSC do you receive, per month?", m, "crsc_monthly", key=wkey("crsc"),
                   step=50.0,
                   help="Combat-Related Special Compensation is tax-free and is "
                        "an alternative to CRDP, not an addition.")
 
     with input_card("Civilian income"):
-        money("Civilian wages, per year", m, "civilian_wages_annual",
+        money("What do you earn in civilian wages, per year?", m, "civilian_wages_annual",
               key=wkey("civwage"), step=1000.0,
               help="A second career, or your own civilian job if you are Guard "
                    "or Reserve.")

@@ -74,11 +74,11 @@ inputs, results = two_pane()
 # Left: how much you can put against the debt.
 # ==========================================================================
 with inputs:
-    with input_card("How much you can pay"):
-        extra = st.number_input("Extra per month, above the minimums", value=200.0,
+    with input_card("How much can you pay?"):
+        extra = st.number_input("What can you pay above the minimums, per month?", value=200.0,
                                 step=50.0, min_value=0.0, format="%.2f",
                                 key=wkey("extra"))
-        scra_on = st.toggle("SCRA 6% cap invoked", value=False, key=wkey("scraon"),
+        scra_on = st.toggle("Have you invoked the SCRA 6% cap?", value=False, key=wkey("scraon"),
                             help="Turn on to see what capping your pre-service debt "
                                  "at 6% is worth. It is not automatic — you must "
                                  "request it in writing with a copy of your orders.")

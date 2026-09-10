@@ -42,14 +42,14 @@ inputs, results = two_pane()
 # Left: the questions, stacked.
 # ==========================================================================
 with inputs:
-    with input_card("Basic pay"):
-        money("Override from your LES (0 = use the table)", m,
+    with input_card("What is your basic pay?"):
+        money("What does your LES show? (0 = use the table)", m,
               "basic_pay_monthly_override", key=wkey("bpover"), step=50.0,
               help="Your LES is authoritative. The table is a convenience.")
 
     if not in_quarters:
-        with input_card("Housing allowance"):
-            money("Override from your LES (0 = look it up)", m,
+        with input_card("Your housing allowance"):
+            money("What BAH does your LES show? (0 = look it up)", m,
                   "bah_monthly_override", key=wkey("bahover"), step=50.0)
 
             if m.bah_monthly_override > 0:
@@ -61,18 +61,18 @@ with inputs:
 
             if bah_monthly > 0:
                 actual = st.number_input(
-                    "Your actual rent/PITI + utilities (0 = estimate)",
+                    "What do you pay for housing? (0 = estimate)",
                     value=0.0, step=50.0, min_value=0.0, format="%.2f",
                     key=wkey("housecost"))
                 pos = BAH.housing_position(bah_monthly, actual)
 
-    with input_card("Special pays"):
-        money("Special and incentive pays, per month", m, "special_pay_monthly",
+    with input_card("Do you draw special pays?"):
+        money("What do you get in special pays, per month?", m, "special_pay_monthly",
               key=wkey("spay"), step=50.0,
               help="Flight pay, sea pay, hazardous duty, language pay, medical "
                    "special pays. Most are taxable, and none count toward "
                    "retired pay.")
-        toggle("Special pays are taxable", m, "special_pay_taxable",
+        toggle("Are your special pays taxable?", m, "special_pay_taxable",
                key=wkey("spaytax"))
 
 # ==========================================================================
