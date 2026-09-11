@@ -1,10 +1,30 @@
 """
-Year-by-year projection of a military retiree household, in real (2026) dollars.
+Year-by-year projection of a military household, in real (2026) dollars.
 
 `run_projection(profile, convert=False)` and `run_projection(profile, convert=True)`
 produce the two futures the app compares. Everything the engine needs comes from
 the Profile object -- there are no hidden constants here beyond the statutory
 tax tables.
+
+THE SERVING YEARS (docs/ARCHITECTURE.md §7 step 4). The walk used to start at
+a retiree: one wage figure grown at a real rate until `work_through_year`. For
+someone still in uniform that is a civilian-shaped guess, and the three things
+it got wrong were the three that matter most:
+
+  * Military pay STEPS. It jumps at promotion and at every longevity boundary,
+    and BAH moves by thousands on a single PCS. `Profile.service` carries the
+    resolved year-by-year answer from `engine/career/timeline.py`; this module
+    reads it and does not model pay itself.
+  * Most of it is not taxable. BAH and BAS never reach a return, and neither
+    does pay excluded in a combat zone. `ServiceYear` splits the two, the tax
+    closure sees only the taxable half, and the cash flow sees both.
+  * The pension has not started. `MilitaryRetirement.pension_start_year` is
+    the year retired pay, VA compensation and CRSC begin. It is 0 for every
+    retiree -- meaning "already flowing" -- so nothing about the retiree path
+    changes.
+
+Everything in this file keys off `p.service.serving`, which is False unless a
+bridge put a schedule there.
 """
 
 from __future__ import annotations
@@ -30,7 +50,13 @@ class YearRow:
     n_alive: int = 2
 
     # Income, all real dollars
-    wages: float = 0.0
+    wages: float = 0.0                     # every taxable wage, service included
+    military_taxable_pay: float = 0.0      # the serving half of `wages`
+    military_allowances: float = 0.0       # BAH, BAS, CZTE-excluded pay: untaxed
+    service_grade: str = ""
+    years_of_service: float = 0.0
+    tsp_member_contribution: float = 0.0   # leaves the paycheck
+    tsp_service_contribution: float = 0.0  # the BRS match; free money
     military_retired_pay: float = 0.0      # taxable portion, net of SBP premium
     sbp_premium: float = 0.0
     sbp_annuity: float = 0.0               # survivor only, taxable
@@ -110,6 +136,15 @@ class ProjectionResult:
     years_with_shortfall: int = 0
     peak_marginal_rate: float = 0.0
     max_irmaa_year: int = 0
+
+    # The serving years, when there were any. All zero for a retiree.
+    lifetime_military_taxable_pay: float = 0.0
+    lifetime_military_allowances: float = 0.0
+    lifetime_tsp_member_contributions: float = 0.0
+    lifetime_tsp_service_contributions: float = 0.0
+    separation_year: int = 0
+    pension_start_year: int = 0
+    pension_annual_at_start: float = 0.0
 
     def to_frame(self):
         import pandas as pd
@@ -241,6 +276,12 @@ def run_projection(
     plan = p.conversion
     mil = p.military
     surv = p.survivorship
+    svc = p.service
+    serving = bool(getattr(svc, "serving", False))
+
+    # The year retired pay, VA compensation and CRSC start. 0 means they are
+    # already flowing, which is every retiree and veteran the engine sees.
+    benefits_from = int(mil.pension_start_year or 0)
 
     bal = _Balances(p)
     result = ProjectionResult(label=label or ("With conversions" if convert else "No conversions"))
@@ -325,19 +366,54 @@ def run_projection(
 
         # ---------------- Income ----------------
         wages = 0.0
+        allowances = 0.0
+        tsp_member_out = 0.0
+        svc_row = svc.year_row(year) if serving else None
+        # Still drawing military pay THIS year. A member who dies in service
+        # is not, and neither their pay nor their TSP may keep arriving.
+        in_uniform = svc_row is not None and alive["primary"]
+
         for who, person in (("primary", p.primary), ("spouse", p.spouse if p.has_spouse else None)):
             if person is None or not alive[who]:
                 continue
+            yrs = max(0, year - start)
+
+            # A year in uniform is read off the schedule, not grown off a
+            # wage. The schedule REPLACES `annual_wages` for the years it
+            # covers -- for a serving member that figure describes the job
+            # after separation, not the one they are in.
+            if who == "primary" and serving:
+                if svc_row is not None:
+                    wages += svc_row.taxable_pay
+                    allowances += svc_row.nontaxable_pay
+                    tsp_member_out += svc_row.member_contribution
+                    row.service_grade = svc_row.grade
+                    row.years_of_service = svc_row.years_of_service
+                    if svc.civilian_wages_annual > 0:
+                        wages += (svc.civilian_wages_annual
+                                  * ((1.0 + person.wage_real_growth) ** yrs))
+                    continue
+                if year <= svc.separation_year:
+                    # Inside the serving span but off the end of the schedule:
+                    # nothing is known about that year, so nothing is claimed.
+                    continue
+                # Past separation. `annual_wages` is the civilian job, and
+                # `service.civilian_wages_entered` says whether anyone said so.
+
             if year > person.work_through_year:
                 continue
-            yrs = max(0, year - start)
             # The first year can be atypical -- a deployed member's CZTE pay
             # never reaches a return -- so it is taken as given, ungrown.
             if yrs == 0 and person.wages_first_year > 0:
                 wages += person.wages_first_year
             elif person.annual_wages > 0:
                 wages += person.annual_wages * ((1.0 + person.wage_real_growth) ** yrs)
+
         row.wages = wages
+        row.military_allowances = allowances
+        row.military_taxable_pay = svc_row.taxable_pay if in_uniform else 0.0
+        row.tsp_member_contribution = tsp_member_out
+        row.tsp_service_contribution = svc_row.tsp_service if in_uniform else 0.0
 
         # Military retired pay -- stops at the retiree's death, replaced by SBP
         mil_gross = 0.0
@@ -347,12 +423,22 @@ def run_projection(
         sbp_annuity = 0.0
         dic = 0.0
 
-        if alive["primary"] and mil.retired_pay_monthly > 0:
-            mil_gross = military_pay_real(mil, year, age_p)
-            if mil.sbp_elected and not mil.sbp_paid_up:
-                base = (mil.sbp_base_amount_monthly * 12.0
-                        if mil.sbp_base_amount_monthly > 0 else mil_gross)
-                sbp_prem = base * mil.sbp_premium_rate
+        # Nothing here is paid before the benefits start. For a retiree that is
+        # year one; for someone still serving it is the year after they take
+        # off the uniform, and drawing retired pay and military pay in the same
+        # year would pay them twice.
+        benefits_started = year >= benefits_from
+
+        if alive["primary"] and benefits_started:
+            if mil.retired_pay_monthly > 0:
+                mil_gross = military_pay_real(mil, year, age_p)
+                if mil.sbp_elected and not mil.sbp_paid_up:
+                    base = (mil.sbp_base_amount_monthly * 12.0
+                            if mil.sbp_base_amount_monthly > 0 else mil_gross)
+                    sbp_prem = base * mil.sbp_premium_rate
+            # VA compensation and CRSC are not conditional on a pension: a
+            # veteran who never reached twenty is still paid them, and for many
+            # of them it is the only indexed income they have (§4a).
             va = mil.va_disability_monthly * 12.0
             crsc = mil.crsc_monthly * 12.0
             # Without concurrent receipt, VA compensation offsets retired pay.
@@ -360,7 +446,8 @@ def run_projection(
                 mil_gross = max(0.0, mil_gross - va)
             if crsc > 0:
                 mil_gross = max(0.0, mil_gross - crsc)
-        elif p.has_spouse and alive["spouse"] and mil.retired_pay_monthly > 0 and mil.sbp_elected:
+        elif (p.has_spouse and alive["spouse"] and benefits_started
+              and mil.retired_pay_monthly > 0 and mil.sbp_elected):
             # Survivor: SBP annuity replaces retired pay. VA compensation ends;
             # DIC may begin.
             # The SBP base is fixed at the retiree's death; it does not keep
@@ -513,15 +600,23 @@ def run_projection(
         if a.late_life_care_annual > 0 and living_age >= a.late_life_care_start_age:
             spending += a.late_life_care_annual
         if mil.has_tricare:
-            spending += mil.tricare_annual_cost
+            # While serving, healthcare costs what the service block says --
+            # nothing, on active duty. The retiree enrolment fee starts with
+            # the pension.
+            spending += (svc.tricare_annual_cost if in_uniform
+                         else mil.tricare_annual_cost)
         row.spending = spending
 
         # Cash in hand before touching investments. The RMD is already a
-        # distribution, so it counts here.
-        base_cash_in = (row.wages + row.military_retired_pay + row.sbp_annuity
+        # distribution, so it counts here. Allowances are cash the member
+        # actually receives and no return ever sees, and the member's own TSP
+        # contribution is cash that leaves before they see it -- without that
+        # subtraction the same dollar would be both spent and saved.
+        base_cash_in = (row.wages + row.military_allowances
+                        + row.military_retired_pay + row.sbp_annuity
                         + row.social_security + row.civilian_pension
                         + row.other_taxable + row.other_taxfree + row.rmd
-                        + dividends)
+                        + dividends - row.tsp_member_contribution)
 
         extra_trad = extra_gain = roth_draw = taxable_draw = cash_draw = 0.0
         tr = tax_for(conversion, 0.0, 0.0)
@@ -614,7 +709,19 @@ def run_projection(
 
         # Ongoing contributions while working
         for who, person in (("primary", p.primary), ("spouse", p.spouse if p.has_spouse else None)):
-            if person is None or not alive[who] or year > person.work_through_year:
+            if person is None or not alive[who]:
+                continue
+            if who == "primary" and serving:
+                # The schedule carries the TSP election year by year, including
+                # the BRS match, which is computed on basic pay only and always
+                # lands in the traditional balance. After separation nothing is
+                # contributed: the app does not ask about a civilian employer
+                # plan, and inventing one would build a balance out of nothing.
+                if in_uniform:
+                    bal.trad[who] += svc_row.traditional_in
+                    bal.roth[who] += svc_row.tsp_member_roth
+                continue
+            if year > person.work_through_year:
                 continue
             bal.trad[who] += person.traditional_contribution
             bal.roth[who] += person.roth_contribution
@@ -749,11 +856,26 @@ def _summarise(result: ProjectionResult, p: Profile) -> None:
         if r.shortfall > 1.0:
             result.years_with_shortfall += 1
         result.peak_marginal_rate = max(result.peak_marginal_rate, r.marginal_rate)
+        result.lifetime_military_taxable_pay += r.military_taxable_pay
+        result.lifetime_military_allowances += r.military_allowances
+        result.lifetime_tsp_member_contributions += r.tsp_member_contribution
+        result.lifetime_tsp_service_contributions += r.tsp_service_contribution
         disc += r.total_tax / ((1.0 + a.discount_rate) ** i)
 
     result.lifetime_total_tax = (result.lifetime_federal_tax + result.lifetime_state_tax
                                  + result.lifetime_irmaa + result.lifetime_penalty)
     result.lifetime_total_tax_discounted = disc
+
+    # What the serving years produced, for anything that has to say where a
+    # figure came from. Zero for everyone who is not still in uniform.
+    if getattr(p.service, "serving", False):
+        result.separation_year = int(p.service.separation_year)
+        result.pension_start_year = int(p.military.pension_start_year or 0)
+        start_row = next((r for r in result.rows
+                          if r.year == result.pension_start_year), None)
+        result.pension_annual_at_start = (
+            start_row.military_retired_pay + start_row.sbp_premium
+            if start_row is not None else 0.0)
 
     if result.rows:
         last = result.rows[-1]

@@ -758,20 +758,210 @@ defect when either of these is true:
 A second widget that writes the same field through a `ui.panel` helper and
 asks the same question is a drill-down, and it stays.
 
-### What is still outstanding on R3
+### The three pages that wrote nothing back, and what they do now
 
-The three pages §4a named as writing nothing back are **untouched**:
+The three pages §4a named — Pension, Medical Separation, Taxes — carried
+**thirty-six** raw widgets between them, every one seeded from the plan and
+written nowhere. That is fixed. It was not fixed by persisting all thirty-six,
+because two different things were sitting on those pages wearing the same
+clothes.
 
-| Page | Raw `st.*` widgets | Write-through helpers |
-|---|---|---|
-| `pages/8_Retirement.py` (Pension) | 5 | 0 |
-| `pages/11_Separation_and_Insurance.py` (Medical Separation) | 21 | 0 |
-| `pages/22_This_Years_Taxes.py` (Taxes) | 7 | 0 |
+*(Thirty-six, not the 5 / 21 / 7 this section used to record. Both earlier
+counts were hand-made and both were short: Pension is 5 **plus** the two
+lump-sum knobs, which only render for a BRS member, and Medical Separation is
+22, not 21 — §4a's "eighteen" was shorter still. A count nobody can reproduce
+is why the test below pins the exact set of fields instead.)*
 
-Thirty-three inputs, every one of them seeded from the profile and thrown away.
-That is the R3 work that remains, and it is a scoped, separate piece: each
-widget needs a field to write into, and several — an SBP base amount, a
-severance figure, the eighteen Medical Separation knobs — have no field on
-`ServiceMember` yet. Converting them is not a sweep, it is a data-model change
-per page. **It is not done, it is not partly done, and it is not blocked by
-anything in intake.**
+**A fact about the member** — their real high-3, the rating a board gave them,
+the VA compensation that actually arrives — has one home and writes through a
+`ui.panel` helper, with `mark_dirty()` and `invalidate()`, like every other
+input in the app.
+
+**A what-if** — *what if I took the 50% lump sum, what if I filed separately,
+what if I spent seven months in the zone* — is a scenario the member is
+exploring, not a claim about themselves, and persisting it would be wrong. It
+stays page-local. The defect was never that the value was discarded; it was
+that **nothing on screen said it would be**, so the two were indistinguishable.
+
+| Page | Writes back | Page-local what-ifs | Derived, not asked |
+|---|---:|---:|---:|
+| `pages/8_Retirement.py` (Pension) | 3 | 3 | 1 |
+| `pages/11_Separation_and_Insurance.py` (Medical Separation) | 9 | 10 | 2 + 1 removed |
+| `pages/22_This_Years_Taxes.py` (Taxes) | 1 | 7 | 0 |
+
+Taxes' spouse question is counted in both columns because it is both: the
+widget writes into `spouse_income.annual_income` for a plan that has a spouse,
+and falls back to a labelled what-if for one that does not, since there is then
+nowhere to save it.
+
+`tests/test_one_home_per_fact.py` pins the exact set each page writes, not the
+count, so a change says *which fact moved*. Raising a number there means a
+what-if was promoted into a stored fact; lowering one means a fact went back to
+being thrown away. Either is a decision, and either edits this section too.
+
+### How a page-local knob says so
+
+The convention already existed on `9_Survivor_and_VA.py` and is now binding on
+every page. Two parts, because a tooltip is not a label:
+
+```python
+WHATIF = ("A what-if on this page only. Nothing typed here is saved to your "
+          "plan — it moves the figures below and nothing else.")
+WHATIF_CARD = "What-if — nothing on this card is saved to your plan."
+```
+
+* every raw `st.*` widget carries `WHATIF` at the front of its `help`, and
+* the card holding it carries `WHATIF_CARD` as a visible caption.
+
+A card that mixes the two — Medical Separation's insurance card holds the SGLI
+coverage, which is saved, above three comparison knobs, which are not — says so
+in a caption naming which is which. `tests/test_pages_that_discarded_answers.py`
+enforces both halves: no raw widget on those three pages may be silent, and no
+page may ask one question twice.
+
+### The third outcome: derived, and not asked at all
+
+R1 outranks both. Three widgets were removed rather than classified, because
+the app can work the answer out and asking it again only lets two answers
+disagree:
+
+* **"How old will you be when you retire / separate?"** is today's age plus the
+  years still to serve. Both pages now state the figure and where it came from,
+  in the `Derived` shape §13 describes — a line of prose, not a widget.
+* **"Are you in the Blended Retirement System?"** was seeded from
+  `opted_into_brs`, which is only the 2018 opt-in election. Anyone with a DIEMS
+  date of 2018 or later is in BRS *without ever opting in*, so the widget
+  opened on "no". The DIEMS date decides and nothing else does; the page reads
+  `m.retirement_system`.
+
+  **What it actually costs, stated precisely, because the first telling of this
+  was wrong twice.** Severance is unaffected — `disability_separation.py` uses
+  a flat `SEVERANCE_MULTIPLIER = 2.0` and never reads `is_brs`. The flag feeds
+  the **Chapter 61 disability RETIRED PAY** multiplier, `(0.020 if is_brs else
+  0.025) * years_of_service`, so a mis-seeded member had their *pension*
+  overstated by 25% — but only when length of service is the binding
+  multiplier, because Chapter 61 pays the greater of that and the DoD rating.
+
+  **And today it is inert.** The only mis-seeded population is post-2018 DIEMS,
+  who have at most 8.7 years of service in 2026. Chapter 61 needs a 30% rating
+  to qualify at that length, and 30% beats 8 × 2.5% = 20%, so the rating always
+  binds and the dollar difference is exactly zero. The fix is kept because the
+  seed was semantically wrong regardless, and because it becomes a live error
+  around 2038, when a post-2018 member first reaches twenty years and the
+  length multiplier starts to bind. A trap that is invisible until it activates
+  is worth closing before it does.
+* Medical Separation asked **"How old will you be when you separate?" twice**,
+  in two cards, with two keys. The insurance half quietly used the second. R3
+  inside a single page.
+
+### Five fields were added to `ServiceMember`, and something reads each one
+
+The §11 standard applies: **a field that exists and changes nothing is worse
+than no field.**
+
+| Field | What reads it |
+|---|---|
+| `high_3_monthly_override` | `ServiceMember.high_3_monthly()`, through which both Pension and Medical Separation resolve the figure every retirement multiplier is applied to. `0.0` means use the published table — the same rule as `basic_pay_monthly_override`. |
+| `dod_disability_rating` | `disability_separation.evaluate()` via Medical Separation: it decides severance against a lifetime pension with TRICARE, and the size of the cliff between them. |
+| `disability_combat_related` | the same call — a combat-related finding generally stops the VA recouping the severance, which is worth the whole severance. |
+| `disability_incurred_in_combat_zone` | the same call — it makes the severance tax-free. |
+| `on_tdrl` | the same call — retired pay now, re-evaluated for up to three years. |
+
+The DoD rating is deliberately **not** `va_rating`: different bodies, different
+standards, and the two routinely differ. `0` means no board has rated the
+member yet, and the page says so rather than pricing an invented 20%.
+
+All five round-trip for free — `to_dict()` is `asdict()` and `_build()` skips
+keys a file does not carry — and §10 still holds: no migration, both sample
+plans load, and every plan saved before this loads with the declared defaults.
+
+### `sbp_base_amount_monthly` was refused again, and why
+
+§11 named the two-line remedy: the field on `ServiceMember`, and passing it at
+`roth_bridge.py:485`. Both lines are cheap. The field was still not added,
+because the only widget that would write it is on `pages/9_Survivor_and_VA.py`,
+which round three did not own. Adding the field alone would produce a field
+with a reader and **no writer** — and would make that page's own on-screen
+disclosure ("the plan carries no base-amount field, so nothing typed here is
+saved") false, with no way to correct it in the same change.
+
+It stays a known gap, on §11's terms, for whoever next owns the Survivor page:
+add the field, pass it through `roth_bridge.py`, bind the widget, and drop the
+sentence from the help. All four, or none.
+
+### What R3 still does not cover
+
+The three pages are done. A whole-tree sweep for the same defect is not: this
+work checked `9_Survivor_and_VA.py` because it already carried the labelled
+what-if the convention came from, and left the rest alone. Any page that seeds
+a raw `st.*` widget from the Household and writes nothing back is the same
+defect, and the two tests above are shaped to be pointed at more pages when
+somebody does that sweep.
+
+---
+
+## 15. Ruling: the surplus rule, and what the funded ratio may say
+
+The serving projection ends the E-5 sample with a seven-figure taxable account,
+because the existing surplus rule reinvests everything a household is paid and
+does not spend — and the household is paid far more than the one monthly
+spending figure it was asked for. Left alone that reads **C-1 funded ratio for
+a member with $33,700 of consumer debt and 0.8 months of reserve**, which is
+absurd on its face.
+
+### The arithmetic is not wrong, and is not being changed
+
+The rule reinvests a real surplus at a real return. What it rests on is an
+**input assumption nobody had written down**: that real spending never rises
+from today's figure for forty years while pay steps at every longevity boundary
+and jumps at every promotion.
+
+For a retiree that is close to true — terminal standard of living, fixed
+income, and the surplus is small. For someone at six years it implies a saving
+rate they never agreed to and would probably not recognise.
+
+Three reasons not to touch the arithmetic:
+
+1. **It is the plan's own.** The member said what they spend. A member who
+   really does bank two thirds of their pay should see that future.
+2. **It is shared with the retiree path.** Changing it moves every existing
+   retiree's figures, which is precisely what the row-by-row comparison in this
+   round exists to prevent.
+3. **Any cap is invented.** Replacing an unstated assumption with a different
+   unstated assumption is not an improvement — it is §8's false precision
+   wearing a haircut.
+
+### What was wrong was that the assumption was invisible
+
+`build_service()` records an assumption for every place the schedule had to
+assume rather than read — the career timeline, PCS moves, post-separation
+earnings, TRICARE after an early exit. **Spending was not among them**, and
+none of the four was rendered anywhere: `describe()` is the one thing a page
+reads and it dropped the whole list.
+
+Both are fixed. The spending assumption now states the saving rate as a number
+the member can check against their own bank statement, and `describe()`
+surfaces every assumption, numbered, plus any `not_modelled` refusal. No
+computed figure moved — the retiree comparison is still identical cell for
+cell.
+
+### The rule for the scorecard pass
+
+**The funded ratio must not award C-1 off a projection whose implied saving
+rate has not been accepted by the member.** Specifically, `funded_ratio()`
+should:
+
+* read the implied lifetime saving rate and **show it as evidence**, next to
+  the ending balance it produces — §8 applies with more force here than
+  anywhere, because this is the single largest number the app will ever print;
+* **cap the band** where that rate is not credible on its face and the plan has
+  not been told otherwise. A plan that funds every year only because it banked
+  40% of its pay for forty years is not C-1 ready; it is a plan resting on an
+  assumption;
+* say which figure moves it — the monthly spending answer, not the return
+  assumption.
+
+That is a `scorecard/` change and is deliberately **not** made in this pass.
+**It does not block the pass.** The components below are rateable now and the
+funded ratio is rateable *with* the cap; what is not acceptable is shipping the
+funded ratio for a serving member with neither the cap nor the evidence.

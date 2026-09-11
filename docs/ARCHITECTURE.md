@@ -206,11 +206,28 @@ way to know which pages will change shape until they visit them.
 | `grade`, `years_of_service`, `has_dependents`, `duty_zip` | Profile **and** Import Pay Statement |
 
 Worse, three pages — **Pension**, **Medical Separation**, **Taxes** —
-write *nothing* back at all. Every input on them is a page-local knob
-seeded from the profile, so a member who corrects a figure there has
-corrected nothing. Medical Separation has **eighteen** such inputs.
+wrote *nothing* back at all. Every input on them was a page-local knob
+seeded from the profile, so a member who corrected a figure there had
+corrected nothing. The count was first given here as eighteen on Medical
+Separation; a field-by-field audit later put the three pages together at
+**36**, because Pension's two BRS lump-sum knobs render only for a BRS
+member and were missed, and Medical Separation has 22 rather than 18.
 
-That is the chaos, precisely located. Intake fixes it by asking once.
+**FIXED.** All three pages now write back where the answer is a fact
+about the member. The 36 inputs resolved to **13 stored facts** (five of
+them new `ServiceMember` fields, each with a named reader), **19
+page-local what-ifs** that are deliberately not saved and say so on the
+card, and **4** that were derived or de-duplicated away. A count is a
+thing that drifts, so `docs/FUNNEL_CONTRACT.md` §14 now pins the exact
+set of fields each page writes rather than a number, and
+`tests/test_pages_that_discarded_answers.py` holds it there.
+
+The diagnosis above is kept in the past tense rather than deleted,
+because it is the evidence the rest of this design rests on and the
+reasoning outlives the defect. What remains true is the general rule it
+produced: **one home per fact, read everywhere else** (§5a R3).
+
+That was the chaos, precisely located. Intake fixes it by asking once.
 
 ### Two defects found on the way
 

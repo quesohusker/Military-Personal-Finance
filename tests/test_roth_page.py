@@ -153,7 +153,7 @@ def test_describe_reports_what_the_engine_was_actually_given():
 
 
 # ==========================================================================
-# The adapter: someone still serving, with no retired pay at all
+# The adapter: someone still serving, whose pension has not started
 # ==========================================================================
 
 def test_an_active_duty_household_with_no_retired_pay_still_yields_valid_inputs():
@@ -172,7 +172,13 @@ def test_an_active_duty_household_with_no_retired_pay_still_yields_valid_inputs(
     assert d.to_dict()["strategy"] == ConversionPlan.STRATEGY_BRACKET
 
     p = RB.to_roth_profile(h, d)
-    assert p.military.retired_pay_monthly == 0.0
+    # This used to be 0: the engine had no way to say "a pension that has not
+    # started yet", so a serving member was given none at all. ARCHITECTURE §7
+    # step 4 ends that refusal. The figure is priced off the career timeline --
+    # 40% of a $4,421.70 high-3 at twenty years under BRS -- and it is paid
+    # from the year AFTER separation, never a year before.
+    assert p.military.retired_pay_monthly == pytest.approx(1_768.68, abs=0.01)
+    assert p.military.pension_start_year == 2041       # separates at 20 in 2040
     assert p.military.system == RP.SYS_BRS
     assert p.military.va_disability_monthly == 0.0
     assert p.state == "Texas"
