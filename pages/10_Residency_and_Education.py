@@ -6,6 +6,7 @@ import pandas as pd
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card, section, metric_row, money, integer, number, toggle, choice, fmt_money, fmt_pct, esc, md_money)
 from engine.tax import domicile as D
+from engine.retirement import roth_bridge as RB
 from engine.benefits import gi_bill as GI
 from engine.pay import bah as BAH
 from engine.pay import taxable as TX
@@ -22,11 +23,29 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("Where do you pay tax?"):
-        slr = st.selectbox("Which state is your legal residence?", D.STATE_NAMES,
-                           index=D.STATE_NAMES.index(h.state_of_legal_residence)
-                           if h.state_of_legal_residence in D.STATE_NAMES else 0,
-                           key=wkey("slr2"))
-        h.state_of_legal_residence = slr
+        # Profile asks this as free text and this page as a dropdown, so the
+        # plan may carry "TX", "texas" or a typo. Canonicalise a spelling the
+        # table recognises before the dropdown reads it -- otherwise it cannot
+        # find the value and silently selects the first state in the list.
+        # Re-spelling the same answer is not an edit, so it does not mark the
+        # plan dirty; choosing a different state below is, and does.
+        stored = h.state_of_legal_residence
+        resolved = RB.resolve_state(stored)
+        if RB.state_is_known(resolved):
+            h.state_of_legal_residence = resolved
+        elif stored:
+            st.warning(esc(f"Your plan says “{stored}” is your legal residence, "
+                           f"which is not a state this app knows. Choose one "
+                           f"below — it replaces what Profile has."), icon="⚠️")
+        else:
+            st.warning("Your plan does not say where your legal residence is. "
+                       "Choose it below.", icon="⚠️")
+        # Through choice(), not a bare assignment: this field moves five-figure
+        # sums, and writing it directly left the plan looking saved and every
+        # cached result stale, because nothing called mark_dirty() or
+        # invalidate().
+        slr = choice("Which state is your legal residence?", h,
+                     "state_of_legal_residence", D.STATE_NAMES, key=wkey("slr2"))
         # Compare against where you are actually stationed. Texas is only
         # the fallback for a blank or unrecognised duty state.
         duty = (h.current_state or "").strip().lower()

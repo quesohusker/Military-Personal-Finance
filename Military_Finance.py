@@ -39,6 +39,7 @@ MENU = {
     "Start": [
         _page("pages/00_Start.py", "Start", "🎖️", default=True),
         _page("pages/01_Intake.py", "Intake", "📝"),
+        _page("pages/02_Scorecard.py", "Scorecard", "🎯"),
     ],
     # Status-independent: the money questions that do not care what your DD-214
     # says. Ordered as a new user walks them — who you are, what comes in, what

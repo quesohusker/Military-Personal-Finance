@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any, get_type_hints
 import json
 
+from engine.career.timeline import CareerTimeline
 from engine.debt.payoff import Debt
 from engine.income.spouse import SpouseIncome
 
@@ -359,6 +360,14 @@ class Household:
 
     debts: list = field(default_factory=list)
 
+    # Promotions, PCS moves and the point the member separates. This lived in
+    # st.session_state until it became clear that meant it was lost on every
+    # reload and absent from every downloaded plan -- ten minutes of careful
+    # answers thrown away by a browser refresh. It is also what a lifetime
+    # projection reads to model the serving years, and a projection cannot read
+    # session state.
+    career: CareerTimeline = field(default_factory=CareerTimeline)
+
     assumptions: Assumptions = field(default_factory=Assumptions)
     social_security: SocialSecurity = field(default_factory=SocialSecurity)
     healthcare: Healthcare = field(default_factory=Healthcare)
@@ -418,6 +427,14 @@ def _build(cls, data: Any):
             continue
         if f.name == "spouse_income" and isinstance(value, dict):
             kwargs[f.name] = _build(SpouseIncome, value)
+            continue
+        if f.name == "career":
+            # CareerTimeline holds plain `list` fields of nested dataclasses,
+            # which _build cannot see through -- it would hand back lists of
+            # raw dicts. The timeline rebuilds itself, and tolerates a plan
+            # saved before it was part of one.
+            kwargs[f.name] = (CareerTimeline.from_dict(value)
+                              if isinstance(value, dict) else CareerTimeline())
             continue
         if is_dataclass(ftype) and isinstance(value, dict):
             kwargs[f.name] = _build(ftype, value)

@@ -22,11 +22,20 @@ page_header("📈 Career",
             "boundaries and jumps on orders — it does not grow on a curve.")
 
 # --------------------------------------------------------------------------
-if "timeline" not in st.session_state:
-    st.session_state["timeline"] = TL.CareerTimeline(
-        promotions=TL.default_promotions(m.grade, m.years_of_service),
-        separation_at_years_of_service=20.0)
-t = st.session_state["timeline"]
+# The timeline lives on the plan, not in session state, so it survives a
+# reload and travels in the downloaded file with every other answer.
+t = h.career
+if not t.entered and not t.promotions:
+    # Service averages, as a starting point -- and ONLY for a plan that has
+    # never answered these questions. Seeding a plan that has is how a
+    # carefully entered career gets quietly replaced by a default.
+    t.promotions = TL.default_promotions(m.grade, m.years_of_service)
+
+
+def edited() -> None:
+    """Record that these are the member's answers now, not the defaults."""
+    t.entered = True
+    mark_dirty(); invalidate()
 
 START = float(m.years_of_service)
 END = float(t.separation_at_years_of_service)
@@ -49,15 +58,28 @@ with inputs:
                        f"from a Date of Rank of {m.date_of_rank}. Set it on "
                        f"Profile.")
 
+        # What the slider opens at: the plan's answer, or the earliest year the
+        # slider can show if the plan's answer is already behind the member.
+        opens_at = float(max(END, START + 1))
         sep = st.slider("When do you separate or retire?", min_value=max(2.0, START + 1),
-                        max_value=42.0, value=float(max(END, START + 1)),
+                        max_value=42.0, value=opens_at,
                         step=1.0, key=wkey("sepslider"), format="%g yrs")
         if sep != t.separation_at_years_of_service:
             t.separation_at_years_of_service = sep
             END = sep
+            # Adopting the clamped default on a plan nobody has answered is the
+            # app tidying its own default, not the member changing anything, so
+            # it does not claim unsaved changes. Moving the slider does.
+            if t.entered or sep != opens_at:
+                edited()
 
         st.markdown("###### Promotions")
-        new_proms = []
+        # Edited in place, by index. A promotion that falls after the
+        # separation point is not shown, but it is KEPT: the timeline is saved
+        # now, and nudging the separation slider down for a moment must not
+        # silently delete a grade the member expects to make.
+        new_proms = list(t.promotions)
+        moved_one = False
         for i, p in enumerate(t.promotions):
             if p.at_years_of_service > sep:
                 continue
@@ -66,16 +88,22 @@ with inputs:
                            max_value=float(sep), value=float(min(max(p.at_years_of_service, START), sep)),
                            step=0.5, key=wkey(f"prom_{i}"),
                            label_visibility="collapsed", format="%g yrs")
-            new_proms.append(TL.Promotion(p.to_grade, at, p.confirmed))
-        t.promotions = new_proms
+            if at != p.at_years_of_service:
+                new_proms[i] = TL.Promotion(p.to_grade, at, p.confirmed)
+                moved_one = True
+        if moved_one:
+            t.promotions = new_proms
+            edited()
 
         if st.button("Reset timing", use_container_width=True,
                      key=wkey("resetp")):
             t.promotions = TL.default_promotions(m.grade, m.years_of_service)
+            edited()
             st.rerun()
         if st.button("No more promotions", use_container_width=True,
                      key=wkey("clearp")):
             t.promotions = []
+            edited()
             st.rerun()
 
     with input_card("Where are you moving next?"):
@@ -107,7 +135,7 @@ with inputs:
                     destination_label=str(row.get("Label") or ""),
                     into_government_housing=bool(row.get("Into quarters"))))
             t.moves = moves
-            mark_dirty(); invalidate(); st.rerun()
+            edited(); st.rerun()
 
     with input_card("Want to compare two ZIP codes?"):
         from_zip = st.text_input("Which ZIP are you moving from?", value=m.duty_zip or "",
@@ -142,6 +170,8 @@ marks = []
 marks.append({"YOS": START, "Label": f"Now · {m.grade}", "Kind": "Now",
               "Row": 0})
 for p in t.promotions:
+    if p.at_years_of_service > sep:
+        continue                      # after separation: kept on the plan, off the chart
     marks.append({"YOS": p.at_years_of_service, "Label": p.to_grade,
                   "Kind": "Promotion", "Row": 1})
 for mv in t.moves:
