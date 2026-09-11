@@ -32,7 +32,7 @@ def pending(key: str, fallback):
     return st.session_state.get(wkey(key), fallback)
 
 
-page_header("📊 How is my money invested?",
+page_header("📊 Investments",
             "The five funds, what they cost, and the reason a military "
             "retiree's portfolio can hold more shares than a civilian's — not "
             "fewer.")
@@ -283,9 +283,9 @@ with results:
             st.info("You have no retired pay or VA compensation entered, so "
                     "there is no guaranteed income to value yet. If you serve "
                     "to twenty this becomes the largest number in your plan — "
-                    "the **Do I stay to twenty?** page prices it. Until then, "
-                    "your allocation question is the ordinary one: how long "
-                    "until you need the money.", icon="ℹ️")
+                    "the **Pension** page prices it. Until then, your "
+                    "allocation question is the ordinary one: how long until "
+                    "you need the money.", icon="ℹ️")
 
     # ----------------------------------------------------------------------
     with section("Sequence-of-returns risk, and the floor under it"):
@@ -373,9 +373,9 @@ with results:
                 f"TSP at any price."))
             st.caption(esc(TA.VERIFY["advisor_fee"]))
         else:
-            st.info("Enter your TSP and IRA balances on the **What I am "
-                    "worth** page and this becomes a dollar figure on your "
-                    "own money.", icon="ℹ️")
+            st.info("Enter your TSP and IRA balances on the **Accounts** page "
+                    "and this becomes a dollar figure on your own money.",
+                    icon="ℹ️")
 
     # ----------------------------------------------------------------------
     st.markdown("### What to look at, biggest dollars first")

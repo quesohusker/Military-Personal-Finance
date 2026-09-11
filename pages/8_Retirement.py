@@ -25,9 +25,10 @@ DISCOUNT_HELP = (
 
 h = get_household()
 m = h.member
-page_header("🎖️ Do I stay to twenty?",
-            "What your pension is worth, what reaching twenty is worth, and "
-            "the one election that can undo a career of saving.")
+page_header("🎖️ Pension",
+            "Should you stay to twenty? What your pension is worth, what "
+            "reaching twenty is worth, and the one election that can undo a "
+            "career of saving.")
 
 SYS_MAP = {"High-3": S.SYS_HIGH3, "Blended Retirement System": S.SYS_BRS,
            "CSB/REDUX": S.SYS_REDUX, "Final Pay": S.SYS_FINAL_PAY}

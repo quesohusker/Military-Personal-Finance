@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any, get_type_hints
 import json
 
+from engine.career.timeline import CareerTimeline
 from engine.debt.payoff import Debt
 from engine.income.spouse import SpouseIncome
 
@@ -181,7 +182,14 @@ class ServiceMember:
 
     grade: str = "E-5"
     years_of_service: float = 6.0
-    time_in_grade_years: float = 2.0
+
+    # Time in grade, asked two ways. A Date of Rank is a fact off the LES or
+    # the ORB that does not change until the next promotion; a number of years
+    # is right on the day it is typed and quietly wrong on every later day the
+    # plan is opened. So DOR wins when it is set, and the typed number stays
+    # for anyone who does not know theirs. Read them through time_in_grade().
+    date_of_rank: str = ""                    # ISO text, like diems_date
+    time_in_grade_years: float = 2.0          # fallback when there is no DOR
 
     # DIEMS drives the retirement system. Stored as ISO text so the profile
     # stays JSON-native.
@@ -261,6 +269,32 @@ class ServiceMember:
             return None
 
     @property
+    def dor(self) -> date | None:
+        """Date of Rank, or None if it was never entered or does not parse."""
+        try:
+            return date.fromisoformat(self.date_of_rank)
+        except (ValueError, TypeError):
+            return None
+
+    def time_in_grade(self, as_of: date | None = None) -> float:
+        """
+        Years in the current grade, from the Date of Rank when there is one.
+
+        A DOR in the future is a typo, not a promotion that has not happened
+        yet, so it falls back rather than returning a negative. Everything
+        downstream -- the Social Security earnings history in particular --
+        reads this rather than the stored number.
+        """
+        d = self.dor
+        if d is None:
+            return max(0.0, float(self.time_in_grade_years))
+        today = as_of or date.today()
+        years = (today - d).days / 365.25
+        if years < 0:
+            return max(0.0, float(self.time_in_grade_years))
+        return years
+
+    @property
     def retirement_system(self) -> str:
         if self.component in (RETIRED,):
             return retirement_system_for_diems(self.diems, self.took_csb_redux,
@@ -297,6 +331,25 @@ class Household:
     # Cash position
     cash_savings: float = 0.0
     monthly_expenses: float = 0.0
+    # What could not be cut if the income stopped -- housing, food, utilities,
+    # insurance, healthcare, transport, minimum debt payments. 0.0 means the
+    # question has not been answered, NOT that nothing is essential, so read it
+    # through engine.funnel.essential_monthly(), which falls back to a share of
+    # monthly_expenses. The income-floor component of the scorecard compares
+    # guaranteed inflation-linked income against THIS, not against the total.
+    essential_monthly_expenses: float = 0.0
+
+    # The age the plan is built around. 0 means not chosen; the scorecard's job
+    # is to say whether a target holds, not to invent one.
+    target_retirement_age: int = 0
+
+    # Which of the three intake funnels this plan is in: one of
+    # engine.funnel.FUNNELS, or "" for never asked. Deliberately NOT a second
+    # status field -- engine.funnel.set_funnel() keeps member.component
+    # consistent with it, so the app's existing status gates keep working
+    # unchanged. Read it through engine.funnel.funnel_of(), which falls back to
+    # inference for a plan saved before the question existed.
+    funnel: str = ""
 
     # Balance sheet beyond retirement accounts
     taxable_brokerage: float = 0.0
@@ -306,6 +359,14 @@ class Household:
     other_assets: float = 0.0
 
     debts: list = field(default_factory=list)
+
+    # Promotions, PCS moves and the point the member separates. This lived in
+    # st.session_state until it became clear that meant it was lost on every
+    # reload and absent from every downloaded plan -- ten minutes of careful
+    # answers thrown away by a browser refresh. It is also what a lifetime
+    # projection reads to model the serving years, and a projection cannot read
+    # session state.
+    career: CareerTimeline = field(default_factory=CareerTimeline)
 
     assumptions: Assumptions = field(default_factory=Assumptions)
     social_security: SocialSecurity = field(default_factory=SocialSecurity)
@@ -366,6 +427,14 @@ def _build(cls, data: Any):
             continue
         if f.name == "spouse_income" and isinstance(value, dict):
             kwargs[f.name] = _build(SpouseIncome, value)
+            continue
+        if f.name == "career":
+            # CareerTimeline holds plain `list` fields of nested dataclasses,
+            # which _build cannot see through -- it would hand back lists of
+            # raw dicts. The timeline rebuilds itself, and tolerates a plan
+            # saved before it was part of one.
+            kwargs[f.name] = (CareerTimeline.from_dict(value)
+                              if isinstance(value, dict) else CareerTimeline())
             continue
         if is_dataclass(ftype) and isinstance(value, dict):
             kwargs[f.name] = _build(ftype, value)

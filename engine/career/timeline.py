@@ -17,7 +17,7 @@ overmanned MOS can sit at a grade for years past the average.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as dataclass_fields
 
 from engine.pay import grades as G
 from engine.pay import bah as BAH
@@ -132,23 +132,59 @@ class PCSMove:
         return asdict(self)
 
 
+def _event(cls, raw):
+    """
+    Rebuild one saved event, ignoring any key the class no longer carries.
+
+    A plan file outlives the version of the app that wrote it, so a key that
+    has since been renamed or removed must not raise on the way back in.
+    """
+    if not isinstance(raw, dict):
+        return None
+    known = {f.name for f in dataclass_fields(cls)}
+    return cls(**{k: v for k, v in raw.items() if k in known})
+
+
 @dataclass
 class CareerTimeline:
     promotions: list = field(default_factory=list)
     moves: list = field(default_factory=list)
     separation_at_years_of_service: float = 20.0
 
+    # Whether anyone has actually answered these questions. An empty promotion
+    # list is a real answer -- "no more promotions" -- and is indistinguishable
+    # from a plan nobody has opened the Career page on. Without this flag the
+    # page would helpfully re-seed service averages over that answer on the
+    # next load, which is exactly what persisting the timeline is meant to stop.
+    entered: bool = False
+
     def to_dict(self) -> dict:
         return {"promotions": [p.to_dict() for p in self.promotions],
                 "moves": [m.to_dict() for m in self.moves],
-                "separation_at_years_of_service": self.separation_at_years_of_service}
+                "separation_at_years_of_service": self.separation_at_years_of_service,
+                "entered": self.entered}
 
     @staticmethod
     def from_dict(d: dict) -> "CareerTimeline":
+        """
+        Rebuild from a saved plan, tolerating a file written by any version.
+
+        Every key is optional: a plan saved before the timeline was part of the
+        plan carries none of them, and must load as an untouched timeline
+        rather than raise.
+        """
+        d = d if isinstance(d, dict) else {}
+        try:
+            sep = float(d.get("separation_at_years_of_service", 20.0))
+        except (TypeError, ValueError):
+            sep = 20.0
         return CareerTimeline(
-            promotions=[Promotion(**p) for p in d.get("promotions", [])],
-            moves=[PCSMove(**m) for m in d.get("moves", [])],
-            separation_at_years_of_service=d.get("separation_at_years_of_service", 20.0),
+            promotions=[p for p in (_event(Promotion, x)
+                                    for x in (d.get("promotions") or [])) if p],
+            moves=[m for m in (_event(PCSMove, x)
+                               for x in (d.get("moves") or [])) if m],
+            separation_at_years_of_service=sep,
+            entered=bool(d.get("entered", False)),
         )
 
 

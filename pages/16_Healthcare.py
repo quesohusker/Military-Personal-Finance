@@ -35,10 +35,11 @@ PHASE_COLOUR = {
     HC.PH_MEDICARE: C.VIOLET,
 }
 
-page_header("🏥 What will healthcare cost me?",
-            "Until 65 a military family has the cheapest coverage in America. "
-            "At 65 it becomes Medicare Part B — and what you convert to Roth "
-            "at 63 sets that premium at 65.")
+page_header("🏥 Healthcare",
+            "What your coverage costs, for the rest of your life. Until 65 a "
+            "military family has the cheapest in America — at 65 it becomes "
+            "Medicare Part B, and what you convert to Roth at 63 sets that "
+            "premium at 65.")
 
 inputs, results = two_pane()
 
@@ -51,7 +52,7 @@ with inputs:
             st.caption("Without a military retirement there is no TRICARE at "
                        "any price, so the plan below is ignored and your years "
                        "are costed as civilian coverage. Set your component on "
-                       "the Who I am page if that is wrong.")
+                       "the Profile page if that is wrong.")
         choice("Which TRICARE plan are you on?", hc, "tricare_plan",
                HC.plans_for(m.component), key=wkey("hc_plan"),
                help="Prime is the HMO — a primary care manager, referrals, "
@@ -125,8 +126,8 @@ with inputs:
             min_value=0.0, step=5_000.0, format="%.0f", key=wkey("hc_conv"),
             help="A conversion raises this year's MAGI, and IRMAA reads that "
                  "MAGI two years later. Nothing else about the conversion is "
-                 "priced here — the tax on it lives on the Should I convert to "
-                 "Roth? page.")
+                 "priced here — the tax on it lives on the Roth Conversions "
+                 "page.")
 
 # ==========================================================================
 # The arithmetic, once every answer is in.

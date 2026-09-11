@@ -320,7 +320,7 @@ def _render():
 
 def test_page_renders_with_a_card_for_every_assumption():
     at = _render()
-    assert "What should we assume" in at.title[0].value
+    assert "Assumptions" in at.title[0].value
     body = " ".join(md.value for md in at.markdown)
     for e in A.explain_all():
         assert e.question in body, e.question

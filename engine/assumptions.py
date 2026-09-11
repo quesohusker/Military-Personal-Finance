@@ -53,17 +53,17 @@ HIGH_DISCOUNT_RATE = 5.0
 # says every field has an explanation.
 FIELDS = tuple(f.name for f in fields(Assumptions))
 
-# Menu titles, as the router names them, so the "which pages this moves"
-# table reads the way the sidebar does.
-PAGE_WORTH = "What I am worth"
-PAGE_TWENTY = "Do I stay to twenty?"
-PAGE_SURVIVOR = "Survivors, SBP and the VA"
-PAGE_MEDICAL = "If I am medically separated"
-PAGE_CAREER = "Promotions and PCS moves"
-PAGE_TSP = "Combat-zone pay and the TSP"
-PAGE_HOME_STATE = "My home state, and the GI Bill"
-PAGE_ROTH = "Roth conversions (engine only; no page yet)"
-PAGE_THIS = "What should we assume?"
+# Page titles, spelled as the sidebar spells them in Military_Finance.py, so
+# the "which pages this moves" table reads the way the menu does.
+PAGE_WORTH = "Accounts"
+PAGE_TWENTY = "Pension"
+PAGE_SURVIVOR = "Survivor Benefits"
+PAGE_MEDICAL = "Medical Separation"
+PAGE_CAREER = "Career"
+PAGE_TSP = "Deployment"
+PAGE_HOME_STATE = "Residency & GI Bill"
+PAGE_ROTH = "Roth Conversions"
+PAGE_THIS = "Assumptions"
 
 
 # ==========================================================================

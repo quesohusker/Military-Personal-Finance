@@ -740,7 +740,7 @@ def expenses_covered(h, portfolio: float | None = None) -> Coverage:
                  portfolio=portfolio)
     if spend <= 0:
         c.headline = "Enter what you spend in a month and this fills in."
-        c.detail = ("Your spending is on the **What I am worth** page. Without "
+        c.detail = ("Your spending is on the **Accounts** page. Without "
                     "it, nothing here can say what your pension covers.")
         return c
 
@@ -858,7 +858,7 @@ def asset_location(h, years: int = 20,
 
     if roth <= 0 and trad <= 0:
         p.lines.append(
-            "Enter your TSP and IRA balances on the **What I am worth** page "
+            "Enter your TSP and IRA balances on the **Accounts** page "
             "and this becomes a dollar figure on your own money.")
         return p
 

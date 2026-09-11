@@ -25,10 +25,11 @@ ss.claim_age = int(min(SS.MAX_CLAIM_AGE, max(SS.MIN_CLAIM_AGE, int(ss.claim_age)
 ss.spouse_claim_age = int(min(SS.MAX_CLAIM_AGE,
                               max(SS.MIN_CLAIM_AGE, int(ss.spouse_claim_age))))
 
-page_header("🧓 When do I claim Social Security?",
-            "One figure decides most of this: the monthly benefit at full "
-            "retirement age printed on your ssa.gov statement. Go and get it — "
-            "everything else on this page is arithmetic around that number.")
+page_header("🧓 Social Security",
+            "The decision is when to claim, and one figure decides most of it: "
+            "the monthly benefit at full retirement age printed on your ssa.gov "
+            "statement. Go and get it — everything else on this page is "
+            "arithmetic around that number.")
 
 inputs, results = two_pane()
 
@@ -100,7 +101,7 @@ with inputs:
                  "them one for one.")
         money("What will you earn in civilian wages, per year?", m,
               "civilian_wages_annual", key=wkey("ss_civwage"), step=1000.0,
-              help="Today's dollars. This is the same figure as on the Who I am "
+              help="Today's dollars. This is the same figure as on the Profile "
                    "page. Zero here makes the civilian years above count as "
                    "zeros, which is what drags the estimate down.")
 
@@ -267,7 +268,7 @@ with results:
                  "age really decides."):
         if not h.has_spouse:
             st.caption("You are not recorded as married, so there is no spousal "
-                       "or survivor benefit to show. Set it on the Who I am page "
+                       "or survivor benefit to show. Set it on the Profile page "
                        "if that is wrong.")
         elif a.pia <= 0 and a.spouse_pia <= 0:
             st.caption("Enter a statement figure for at least one of you to see "
@@ -365,7 +366,7 @@ with results:
                 "and again through the extra slice of benefit it drags into "
                 "tax. Spending from Roth later is invisible to this "
                 "calculation; spending the same money from a traditional TSP is "
-                "not. See the Should I convert to Roth? page."))
+                "not. See Roth Conversions."))
 
     with section("What your service does — and does not — do to this benefit",
                  "Almost everything a civilian tool tells a service member about "

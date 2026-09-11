@@ -477,7 +477,7 @@ _PERIOD_NOISE = (r"\bYTD\b", r"YEAR\s*TO\s*DATE", r"\bY-T-D\b", r"\bTOTAL\b",
 _LES_RULES = (
     _Rule(field="basic_pay_monthly_override", label="Basic pay (monthly)",
           patterns=(r"\bBASE\s+PAY\b", r"\bBASIC\s+PAY\b"),
-          bounds=RANGE_BASIC_PAY, where="the 'What I actually get paid' page",
+          bounds=RANGE_BASIC_PAY, where="the 'Income' page",
           # The TSP block prints BASE PAY RATE and BASE PAY CURRENT. Neither is
           # basic pay and both sit next to a number.
           exclude=_PERIOD_NOISE + (r"\bRATE\b", r"\bCURRENT\b", r"\bTSP\b",
@@ -486,7 +486,7 @@ _LES_RULES = (
           # BAH-DIFF and BAH RC/T are different, much smaller entitlements.
           patterns=(r"\bBAH\b(?!\s*[-/]?\s*(?:DIFF|RC|II|TYPE))",
                     r"\bBASIC\s+ALLOWANCE\s+FOR\s+HOUSING\b", r"\bBAQ\b"),
-          bounds=RANGE_BAH, where="the 'What I actually get paid' page",
+          bounds=RANGE_BAH, where="the 'Income' page",
           # A remarks line -- "BAH BASED ON W/DEP, ZIP 02138" -- offers a
           # five-digit number that reads perfectly well as a housing allowance.
           exclude=_PERIOD_NOISE + (r"\bRATE\b", r"\bTSP\b", r"\bDIFF\b",
@@ -494,7 +494,7 @@ _LES_RULES = (
     _Rule(field="bas_monthly_override", label="BAS (subsistence allowance)",
           patterns=(r"\bBAS\b", r"\bBAS\s*II\b",
                     r"\bBASIC\s+ALLOWANCE\s+FOR\s+SUBSISTENCE\b"),
-          bounds=RANGE_BAS, where="the 'What I actually get paid' page",
+          bounds=RANGE_BAS, where="the 'Income' page",
           exclude=_PERIOD_NOISE + (r"\bRATE\b", r"\bTSP\b")),
     _Rule(field="tsp_contribution_pct", label="TSP contribution (% of basic pay)",
           patterns=(r"\bTSP\b[^\n]{0,24}?\bBASE\s+PAY\s+RATE\b",
@@ -502,11 +502,11 @@ _LES_RULES = (
                     r"\bTSP\s+(?:CONTRIBUTION\s+)?(?:RATE|PCT|PERCENT)\b",
                     r"\bTHRIFT\s+SAVINGS[^\n]{0,40}?\bRATE\b"),
           bounds=RANGE_TSP_PCT, kind="percent",
-          where="the 'Combat-zone pay and the TSP' page",
+          where="the 'Deployment' page",
           exclude=_PERIOD_NOISE),
     _Rule(field="sdp_balance", label="Savings Deposit Program balance",
           patterns=(r"\bSDP\b", r"\bSAVINGS\s+DEPOSIT(?:\s+PROGRAM)?\b"),
-          bounds=RANGE_SDP, where="the 'Who I am' page", optional=True,
+          bounds=RANGE_SDP, where="the 'Profile' page", optional=True,
           exclude=(r"\bYTD\b", r"YEAR\s*TO\s*DATE")),
 )
 
@@ -514,17 +514,17 @@ _RAS_RULES = (
     _Rule(field="retired_pay_monthly", label="Gross retired pay (monthly)",
           patterns=(r"\bGROSS\s+PAY\b", r"\bGROSS\s+RETIRED\s+PAY\b",
                     r"\bMONTHLY\s+GROSS\b", r"\bRETIRED\s+PAY\s+GROSS\b"),
-          bounds=RANGE_RETIRED_PAY, where="the 'Who I am' page",
+          bounds=RANGE_RETIRED_PAY, where="the 'Profile' page",
           exclude=_PERIOD_NOISE + (r"\bNET\b", r"\bTAXABLE\b")),
     _Rule(field="va_disability_monthly", label="VA compensation (the VA waiver)",
           patterns=(r"\bVA\s+WAIVER\b", r"\bWAIVER\s+FOR\s+VA\b",
                     r"\bVA\s+DISABILITY(?:\s+COMPENSATION)?\b",
                     r"\bVA\s+COMPENSATION\b"),
-          bounds=RANGE_VA, where="the 'Who I am' page", exclude=_PERIOD_NOISE),
+          bounds=RANGE_VA, where="the 'Profile' page", exclude=_PERIOD_NOISE),
     _Rule(field="crsc_monthly", label="CRSC (combat-related special compensation)",
           patterns=(r"\bCRSC\b",
                     r"\bCOMBAT[-\s]RELATED\s+SPECIAL\s+COMPENSATION\b"),
-          bounds=RANGE_CRSC, where="the 'Who I am' page", optional=True,
+          bounds=RANGE_CRSC, where="the 'Profile' page", optional=True,
           exclude=_PERIOD_NOISE),
 )
 
@@ -982,7 +982,7 @@ def _read_sbp(lines: list) -> list:
                 note=(f"At the statutory 6.5% this implies an elected base "
                       f"amount of about {_fmt_money(implied)} a month. This app "
                       f"has no field for the premium itself — the base amount "
-                      f"is asked for on the 'Survivors, SBP and the VA' page.")))
+                      f"is asked for on the 'Survivor Benefits' page.")))
         else:
             out.append(Finding(
                 field="", label="SBP premium (monthly)", value=None,
@@ -1119,12 +1119,11 @@ def _bas_note(grade: str, monthly: float) -> str:
 # The entry point
 # --------------------------------------------------------------------------
 _LES_MISSING_LABELS = {
-    "grade": ("Pay grade", "the 'Who I am' page"),
-    "years_of_service": ("Years of service", "the 'Who I am' page"),
-    "special_pay_monthly": ("Special and incentive pays",
-                            "the 'What I actually get paid' page"),
-    "has_dependents": ("Dependents for pay purposes", "the 'Who I am' page"),
-    "duty_zip": ("Duty ZIP code (drives BAH)", "the 'Who I am' page"),
+    "grade": ("Pay grade", "the 'Profile' page"),
+    "years_of_service": ("Years of service", "the 'Profile' page"),
+    "special_pay_monthly": ("Special and incentive pays", "the 'Income' page"),
+    "has_dependents": ("Dependents for pay purposes", "the 'Profile' page"),
+    "duty_zip": ("Duty ZIP code (drives BAH)", "the 'Profile' page"),
 }
 
 def parse(text: str, doc_type: str = "", table=None) -> ParseResult:
@@ -1265,7 +1264,7 @@ def _parse_ras(lines: list, result: ParseResult) -> None:
     result.findings.extend(sbp)
     if not sbp:
         result.missing.append(Missing("SBP cost (the survivor benefit premium)",
-                                      "the 'Survivors, SBP and the VA' page"))
+                                      "the 'Survivor Benefits' page"))
 
     crdp = _read_crdp(lines)
     result.findings.extend(crdp)

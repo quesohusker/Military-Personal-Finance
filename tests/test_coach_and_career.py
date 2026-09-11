@@ -363,3 +363,92 @@ def test_missing_expenses_still_blocks_the_first_step():
     assert step.status == PD.NOT_STARTED
     assert "monthly expenses" in step.action
     assert "basic pay" not in step.action
+
+
+# ==========================================================================
+# Date of Rank
+#
+# Time in grade was stored as a number of years. That number is correct on
+# the day it is typed and quietly wrong every time the plan is opened
+# afterwards -- and it feeds the Social Security earnings history, which
+# reconstructs when the member was promoted. A Date of Rank is a fact off
+# the LES that does not change until the next promotion, so it wins when
+# it is set. The typed number stays as the fallback, because every plan
+# saved before this existed carries one and must keep loading.
+# ==========================================================================
+
+from datetime import date as _date                                     # noqa: E402
+from engine import storage as _storage                                 # noqa: E402
+from engine.income.social_security import grade_history                # noqa: E402
+
+
+def _member(**kw):
+    return ServiceMember(grade="E-6", years_of_service=10.0, **kw)
+
+
+def test_time_in_grade_comes_from_the_date_of_rank_when_there_is_one():
+    m = _member(date_of_rank="2023-09-10", time_in_grade_years=99.0)
+    assert m.time_in_grade(_date(2026, 9, 10)) == pytest.approx(3.0, abs=0.01)
+
+
+def test_the_typed_number_is_used_when_there_is_no_date_of_rank():
+    m = _member(time_in_grade_years=4.5)
+    assert m.date_of_rank == ""
+    assert m.dor is None
+    assert m.time_in_grade() == pytest.approx(4.5)
+
+
+@pytest.mark.parametrize("bad", ["", "not a date", "2023-13-45", "06/01/2023"])
+def test_an_unparseable_date_of_rank_falls_back_rather_than_crashing(bad):
+    m = _member(date_of_rank=bad, time_in_grade_years=2.5)
+    assert m.dor is None
+    assert m.time_in_grade() == pytest.approx(2.5)
+
+
+def test_a_future_date_of_rank_is_a_typo_not_a_negative_time_in_grade():
+    """A promotion that has not happened yet must not produce negative years."""
+    m = _member(date_of_rank="2099-01-01", time_in_grade_years=3.0)
+    assert m.time_in_grade(_date(2026, 9, 10)) == pytest.approx(3.0)
+
+
+def test_the_same_date_of_rank_grows_time_in_grade_as_years_pass():
+    """
+    The whole point. A typed number would read 1.0 in both calls; the date
+    keeps telling the truth without anyone editing the plan.
+    """
+    m = _member(date_of_rank="2025-01-01", time_in_grade_years=1.0)
+    first = m.time_in_grade(_date(2026, 1, 1))
+    later = m.time_in_grade(_date(2030, 1, 1))
+    assert first == pytest.approx(1.0, abs=0.01)
+    assert later == pytest.approx(5.0, abs=0.01)
+    assert later > first
+
+
+def test_the_social_security_earnings_history_moves_with_the_date_of_rank():
+    """
+    grade_history places the promotion into the current grade at
+    (years of service - time in grade). A stale time in grade puts the
+    promotion in the wrong year and mis-states the earnings record.
+    """
+    early = grade_history("E-6", 10.0, 2.0)
+    late = grade_history("E-6", 10.0, 6.0)
+    at_e6_early = [y for y, lab in early if lab == "E-6"][0]
+    at_e6_late = [y for y, lab in late if lab == "E-6"][0]
+    assert at_e6_early == pytest.approx(8.0)
+    assert at_e6_late == pytest.approx(4.0)
+
+
+def test_a_plan_saved_before_date_of_rank_existed_still_loads():
+    h = Household()
+    h.member = _member(time_in_grade_years=3.5)
+    reloaded = _storage.from_upload_bytes(_storage.to_download_bytes(h))
+    assert reloaded.member.date_of_rank == ""
+    assert reloaded.member.time_in_grade() == pytest.approx(3.5)
+
+
+def test_a_date_of_rank_survives_a_save_and_load():
+    h = Household()
+    h.member = _member(date_of_rank="2022-03-15")
+    reloaded = _storage.from_upload_bytes(_storage.to_download_bytes(h))
+    assert reloaded.member.date_of_rank == "2022-03-15"
+    assert reloaded.member.time_in_grade(_date(2026, 3, 15)) == pytest.approx(4.0, abs=0.01)

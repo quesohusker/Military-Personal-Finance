@@ -18,12 +18,12 @@ m = h.member
 hz = h.housing
 asm = h.assumptions
 
-page_header("🏠 Buy, rent, or keep the house?",
-            "The VA loan is the best mortgage product in the country and the "
-            "one people understand least. Three things here are worth five "
-            "figures each: the funding-fee exemption at a 10% rating, the "
-            "assumability of a low rate, and knowing that a three-year tour "
-            "rarely breaks even.")
+page_header("🏠 Housing & VA Loan",
+            "Buy, rent, or keep the house? The VA loan is the best mortgage "
+            "product in the country and the one people understand least — "
+            "three things here are worth five figures each: the funding-fee "
+            "exemption at a 10% rating, the assumability of a low rate, and "
+            "knowing that a three-year tour rarely breaks even.")
 
 inputs, results = two_pane()
 

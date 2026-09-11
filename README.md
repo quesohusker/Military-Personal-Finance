@@ -35,25 +35,39 @@ assumes housing and utilities cost **105% of BAH** unless you say otherwise.
 
 ## The menu
 
-The navigation is organised around the DECISIONS a service member has to make
-and the EVENTS they will meet, not around the software's features. Nobody wakes
-up wanting to visit a "benefits module"; they wake up with orders in hand, or a
-medical board convening, or twelve years in and a choice about staying.
+The navigation is organised around WHO A PAGE IS FOR, not around the software's
+features. Most of personal finance does not care whether you are in uniform, so
+**General** holds the pages everyone uses, and the three status groups hold only
+what is genuinely particular to that status.
+
+Titles are nouns. The title says the subject; the subtitle on the page says the
+question.
 
 | Group | Page | What it does |
 |---|---|---|
-| **Where I stand** | Overview | Why the tool exists, and two ready-made examples |
-| | Who I am | Component, grade, DIEMS date, location, deployment, VA |
-| | What I actually get paid | Basic pay, BAH by ZIP, BAS, drill pay, taxable/untaxed split |
-| | What I am worth | Net worth, including replacement cost of guaranteed income |
-| **Decisions I make now** | What to do with my next dollar | The military priority waterfall, scored |
-| | Getting out of debt | Avalanche vs snowball, priced with the SCRA 6% cap |
-| | My home state, and the GI Bill | State of legal residence, GI Bill use vs transfer |
-| **When I get orders** | Promotions and PCS moves | Promotion timeline, PCS moves, projected pay year by year |
-| **When I deploy** | Combat-zone pay and the TSP | Match, contribution limits, CZTE, the combat-zone overflow |
-| **When I leave the service** | Do I stay to twenty? | All four systems, the 20-year cliff, the BRS lump-sum trap |
-| | If I am medically separated | Chapter 61 retirement vs severance, SGLI/VGLI vs term |
-| | Survivors, SBP and the VA | SBP priced honestly, CRDP vs CRSC after tax |
+| **General** | Overview | Why the tool exists, and two ready-made examples |
+| | Profile | Component, grade, DIEMS date, location, deployment, VA |
+| | Income | Basic pay, BAH by ZIP, BAS, drill pay, taxable/untaxed split |
+| | Accounts | Net worth, including replacement cost of guaranteed income |
+| | Investments | The five TSP funds, their fees, and why a pension lets you hold more stock |
+| | Taxes | This year's return: the BAH, BAS and combat-zone pay no W-2 shows |
+| | Next Dollar | The military priority waterfall, scored |
+| | Roth Conversions | Convert or leave it: lifetime tax, the RMDs, what heirs keep |
+| | Debt Payoff | Avalanche vs snowball, priced with the SCRA 6% cap |
+| | Estate | Beneficiary designations, gifting, and what never reaches the will |
+| | Assumptions | The rates every projection leans on, and which pages each one moves |
+| | Import Pay Statement | Read an LES or RAS and apply the figures to your plan |
+| | Import Accounts | Read closing balances off a bank or brokerage statement |
+| **Currently Serving** | Career | Promotion timeline, PCS moves, projected pay year by year |
+| | Deployment | Match, contribution limits, CZTE, the combat-zone overflow |
+| | Pension | All four systems, the 20-year cliff, the BRS lump-sum trap |
+| | Transition | The leave balance, the pay gap, the VA claim, the TSP loan, the final move |
+| **Veteran** | Medical Separation | Chapter 61 retirement vs severance, SGLI/VGLI vs term |
+| | Residency & GI Bill | State of legal residence, GI Bill use vs transfer |
+| | Housing & VA Loan | Buy, rent or keep — funding fee, entitlement, assumability, IRRRL |
+| **Retiree** | Social Security | When to claim, 62 to 70, with the spousal and survivor benefit priced |
+| | Healthcare | TRICARE now, Medicare Part B at 65, and IRMAA against your conversions |
+| | Survivor Benefits | SBP priced honestly, CRDP vs CRSC after tax |
 
 Plan controls live in the sidebar: name it, download it, or open a file you
 saved earlier. Pin the menu with the 📌 toggle to stop it collapsing.

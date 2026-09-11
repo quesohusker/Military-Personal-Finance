@@ -654,7 +654,7 @@ def estimate_pia_from_career(member, separation_yos: float | None = None,
         civilian_years = int(max(0.0, MIN_CLAIM_AGE - age_at_separation))
     civilian_years = max(0, int(civilian_years))
 
-    steps = grade_history(member.grade, yos_now, member.time_in_grade_years, serving)
+    steps = grade_history(member.grade, yos_now, member.time_in_grade(), serving)
     override = float(getattr(member, "basic_pay_monthly_override", 0.0) or 0.0)
 
     n_mil = int(math.ceil(separation_yos - 1e-9))

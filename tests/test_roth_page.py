@@ -92,7 +92,7 @@ def test_the_adapter_maps_the_retiree_household_onto_the_engine():
     assert p.primary.death_age == 87                   # life expectancy + 5
 
     # No spouse record on the file, so the spouse is the member's contemporary
-    # and carries the spouse income from the Promotions and PCS page.
+    # and carries the spouse income from the Career page.
     assert p.spouse.birth_year == 1975
     assert p.spouse.annual_wages == 52_000.0
     assert p.spouse.traditional_contribution == pytest.approx(52_000 * (0.06 + 0.03))
@@ -371,7 +371,7 @@ def render(sample: str | None = None, household: Household | None = None,
 @pytest.mark.parametrize("sample", [RETIREE, ACTIVE])
 def test_the_page_renders_against_both_samples(sample):
     at = render(sample)
-    assert "convert to Roth" in at.title[0].value
+    assert "Roth Conversions" in at.title[0].value
 
     labels = [m.label for m in at.metric]
     for expected in ("Lifetime tax — don't convert", "Lifetime tax — convert",
@@ -382,7 +382,7 @@ def test_the_page_renders_against_both_samples(sample):
     # One headline verdict, and the findings underneath it.
     assert len(at.success) + len(at.error) >= 1
     body = " ".join(md.value for md in at.markdown)
-    assert "Should I convert" not in body            # that is the title, not a card
+    assert "Roth Conversions" not in body            # that is the title, not a card
     assert any(icon in body for icon in ("✅", "⚠️", "🚨", "💡"))
 
 

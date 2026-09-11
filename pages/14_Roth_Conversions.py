@@ -37,7 +37,7 @@ age_now = max(0, d.start_year - m.birth_year)
 LAST_YEAR = int(d.start_year + RB.MAX_HORIZON_YEARS)
 OLDEST = int(RB.MAX_PLANNING_AGE)
 
-page_header("🔁 Should I convert to Roth?",
+page_header("🔁 Roth Conversions",
             "Two futures on the same assumptions — one where you convert part of "
             "the traditional balance each year and pay the tax now, one where you "
             "leave it alone and let the RMDs arrive — compared on lifetime tax and "
@@ -143,12 +143,30 @@ with inputs:
                                  value=bool(d.skip_while_working), key=wkey("rc_skip"))
 
     with input_card("How long you will work, and live"):
-        wages = st.number_input("What taxable wages will you earn this year?",
+        wages = st.number_input("What taxable wages will you earn in a full year?",
                                 value=float(d.wages_annual), min_value=0.0,
                                 step=1_000.0, format="%.0f", key=wkey("rc_wages"),
                                 help="Basic pay and taxable special pays if you are "
                                      "still serving — BAH and BAS are not wages — plus "
-                                     "any civilian job. Retired pay is separate.")
+                                     "any civilian job. Retired pay is separate. This "
+                                     "is the figure carried forward to every year you "
+                                     "work, so it is a normal year, not a deployed one.")
+
+        # Only worth asking when the exclusion actually applies. Everyone else
+        # would be answering the same question twice.
+        wages_this_year = 0.0
+        if d.wages_this_year > 0:
+            wages_this_year = st.number_input(
+                "And this year, with combat-zone pay excluded?",
+                value=float(d.wages_this_year), min_value=0.0, step=1_000.0,
+                format="%.0f", key=wkey("rc_wages_czte"),
+                help="Pay earned in a combat zone never reaches a tax return, so a "
+                     "deployed year is far smaller than a normal one — and that "
+                     "makes it the cheapest year you will ever convert in. This "
+                     "figure is worked out from your grade and the months recorded "
+                     "on Profile; change it if the months are wrong, or set it "
+                     "equal to the figure above to ignore the exclusion. It applies "
+                     "to this year only.")
         work_through = st.number_input("What is the last year you will earn wages?",
                                        value=int(d.work_through_year),
                                        min_value=int(d.start_year - 1),
@@ -182,7 +200,7 @@ with inputs:
                                            min_value=0.0, step=1_000.0, format="%.0f",
                                            key=wkey("rc_spwages"),
                                            help="Read from the spouse income on the "
-                                                "Promotions and PCS page.")
+                                                "Career page.")
             spouse_work_through = st.number_input(
                 "What is the last year your spouse will earn wages?",
                 value=int(d.spouse_work_through_year), min_value=int(d.start_year - 1),
@@ -293,7 +311,8 @@ with inputs:
 # ==========================================================================
 ri = RB.RothInputs(
     start_year=d.start_year,
-    wages_annual=float(wages), work_through_year=int(work_through),
+    wages_annual=float(wages), wages_this_year=float(wages_this_year),
+    work_through_year=int(work_through),
     death_age=int(death_age),
     spouse_birth_year=int(spouse_birth), spouse_wages_annual=float(spouse_wages),
     spouse_work_through_year=int(spouse_work_through),
@@ -360,12 +379,12 @@ with results:
         if p.state and not RB.state_is_known(p.state):
             st.warning(esc(f"'{p.state}' is not in the state tax table, so state tax "
                            f"is modelled as zero. Set the state of legal residence "
-                           f"to a full state name on the Who I am page."), icon="⚠️")
+                           f"to a full state name on the Profile page."), icon="⚠️")
 
         if trad_total <= 0 and conv.lifetime_conversions <= 0:
             st.info("There is no traditional balance to convert, so the two futures "
                     "are identical. Enter your traditional TSP or IRA balance on the "
-                    "What I am worth page, or read a statement in.", icon="ℹ️")
+                    "Accounts page, or read a statement in.", icon="ℹ️")
         elif c.converting_wins:
             st.success(
                 f"**Converting leaves {md_money(c.legacy_gain)} more after every tax "

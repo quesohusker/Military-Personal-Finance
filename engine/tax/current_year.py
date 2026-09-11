@@ -260,7 +260,7 @@ def w2_picture(m: ServiceMember, *, bonus_paid_in_zone: bool = False,
         w.bah = r.monthly * 12.0 if r.found else 0.0
         if r.found and r.is_average:
             w.notes.append("BAH is the national median for your grade because "
-                           "no duty ZIP is set on Who I am.")
+                           "no duty ZIP is set on the Profile page.")
     w.bas = (float(m.bas_monthly_override) or BAS.bas_monthly(is_officer).monthly) * 12.0
 
     if m.component in (GUARD, RESERVE):
@@ -958,7 +958,7 @@ def findings(h: Household, est: ReturnEstimate) -> list[tuple[str, str, str]]:
                     f"Up to {_money(potential)} back on the first "
                     f"{_money(SAVERS_CREDIT_2026['max_contribution_per_person'])} "
                     f"you put into the TSP or an IRA this year. Set a TSP "
-                    f"contribution on the Combat-zone pay and the TSP page."))
+                    f"contribution on the Deployment page."))
     elif s.eligible and s.credit < s.credit_before_limit:
         out.append((s.credit_before_limit - s.credit, "info",
                     "The Saver's Credit is nonrefundable, and you have little tax "
@@ -1007,7 +1007,7 @@ def findings(h: Household, est: ReturnEstimate) -> list[tuple[str, str, str]]:
                     f"{st_.note} A spouse's salary or a second career is taxed in "
                     f"full where a no-income-tax state would take nothing — the "
                     f"difference between the two kinds of 'military-friendly' "
-                    f"state. See My home state, and the GI Bill."))
+                    f"state. See Residency & GI Bill."))
     elif st_.tax > 0:
         n_free = len(D.NO_TAX_STATES) + len(D.exempt_but_taxing_states())
         out.append((st_.tax, "warn",
@@ -1016,7 +1016,7 @@ def findings(h: Household, est: ReturnEstimate) -> list[tuple[str, str, str]]:
                     f"{st_.note} {n_free} states would take nothing on military "
                     f"pay. Domicile cannot simply be chosen — it is established at "
                     f"a genuine PCS — but it is worth knowing what it costs. See "
-                    f"My home state, and the GI Bill."))
+                    f"Residency & GI Bill."))
 
     # --- Spouse residency election ------------------------------------
     if (est.status == T.MFJ and est.spouse_wages > 0 and h.current_state

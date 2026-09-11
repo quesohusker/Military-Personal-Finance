@@ -40,6 +40,14 @@ class Person:
     work_through_year: int = 2027          # last year of wage income
     wage_real_growth: float = 0.0          # real growth per year while working
 
+    # Wages for the FIRST projected year only, when that year is not typical.
+    # A deployment is the case this exists for: pay excluded under the Combat
+    # Zone Tax Exclusion never reaches a return, so a member seven months in
+    # the zone has a fraction of the taxable income they will have next year.
+    # Carrying that reduction forward would be the opposite error, so it
+    # applies once. 0 means the first year is like every other.
+    wages_first_year: float = 0.0
+
     # Social Security -- PIA is the monthly benefit at Full Retirement Age,
     # in today's dollars. Get it from ssa.gov.
     ss_pia_monthly: float = 0.0

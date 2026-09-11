@@ -518,7 +518,7 @@ def _render(plan: pathlib.Path | None = None):
 
 def test_page_renders_from_an_empty_plan():
     at = _render()
-    assert "How is my money invested" in at.title[0].value
+    assert "Investments" in at.title[0].value
 
 
 @pytest.mark.parametrize("plan", [E5, O5], ids=["e5_brs", "retired_o5"])

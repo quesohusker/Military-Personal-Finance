@@ -12,16 +12,16 @@ from engine.profile import SERVING
 
 h = get_household()
 m = h.member
-page_header("💳 Getting out of debt",
+page_header("💳 Debt Payoff",
             "Avalanche against snowball, with the SCRA interest cap priced in.")
 
 # --------------------------------------------------------------------------
-# Debts are entered on "What I am worth", because that is where they belong on
-# a balance sheet. This page consumes them.
+# Debts are entered on "Accounts", because that is where they belong on a
+# balance sheet. This page consumes them.
 # --------------------------------------------------------------------------
 if h.debts:
-    with st.expander(f"Your {len(h.debts)} debt(s) — edit them on "
-                     f"'What I am worth'", expanded=False):
+    with st.expander(f"Your {len(h.debts)} debt(s) — edit them on 'Accounts'",
+                     expanded=False):
         st.dataframe(
             pd.DataFrame([{"Name": d.name, "Balance": d.balance,
                            "APR %": d.apr * 100,
@@ -37,7 +37,7 @@ if h.debts:
             })
 
 if not h.debts:
-    st.info("No debts recorded. Add them on the **What I am worth** page, "
+    st.info("No debts recorded. Add them on the **Accounts** page, "
             "under Your debts.", icon="ℹ️")
     st.stop()
 

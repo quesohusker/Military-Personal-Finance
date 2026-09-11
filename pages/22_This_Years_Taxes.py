@@ -18,11 +18,12 @@ from engine.tax import tables as T
 h = get_household()
 m = h.member
 
-page_header("🧾 What will this year's tax return look like?",
-            esc("BAH and BAS never reach a W-2, and pay earned in a combat "
-                "zone does not either. That is how a family living on $75,000 "
-                "files a $30,000 return — and why credits everyone assumes are "
-                "for other people are sitting on this one."))
+page_header("🧾 Taxes",
+            esc("What this year's return will look like: BAH and BAS never "
+                "reach a W-2, and pay earned in a combat zone does not either. "
+                "That is how a family living on $75,000 files a $30,000 return "
+                "— and why credits everyone assumes are for other people are "
+                "sitting on this one."))
 
 # Nothing on this page is written back into the plan. Every answer here is a
 # fact about ONE tax year -- what the LES says today, how many months in the
@@ -39,7 +40,7 @@ with inputs:
             "How will you file this year?", T.FILING_STATUSES,
             index=T.FILING_STATUSES.index(CY.filing_status_for(h)),
             key=wkey("cy_status"),
-            help="Taken from Who I am. Married members almost always file "
+            help="Taken from Profile. Married members almost always file "
                  "jointly: filing separately disqualifies the Earned Income "
                  "Credit outright.")
 
@@ -94,7 +95,7 @@ with inputs:
                 step=1, key=wkey("cy_czmonths"),
                 help="Any part of a month in the zone counts as a whole month. "
                      "1 January to 1 July is SEVEN qualifying months, not six. "
-                     "Taken from Who I am; change it here to see the return a "
+                     "Taken from Profile; change it here to see the return a "
                      "deployment produces before you take it.")
     else:
         czte_months = 0
@@ -203,7 +204,7 @@ with results:
         else:
             st.caption("No military pay, retired pay or VA compensation is "
                        "recorded, so there is no W-2 picture to draw. Set your "
-                       "grade and component on Who I am.")
+                       "grade and component on the Profile page.")
 
         for note in w.notes:
             st.caption("• " + esc(note))

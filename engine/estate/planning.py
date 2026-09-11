@@ -1,5 +1,5 @@
 """
-Who gets what, and when — beneficiaries, wills, inheritance tax and gifting.
+Estate — beneficiaries, wills, inheritance tax and gifting.
 
 THE ONE THING TO TAKE FROM THIS MODULE: a beneficiary designation overrides a
 will. Every dollar in the TSP, in SGLI and in an IRA passes by the form on
@@ -374,7 +374,7 @@ def beneficiary_checklist(h) -> list[Finding]:
             f"streaming subscription, at any age, with no underwriting — "
             f"nothing on the commercial market is close for a 45-year-old. If "
             f"you declined it, that was a decision; if the figure is simply "
-            f"not entered, put it in on the Who I am page.",
+            f"not entered, put it in on the Profile page.",
             dollars=SGLI_MAX))
 
     if h.has_spouse:
@@ -1039,8 +1039,8 @@ def findings(h, heir_marginal_rate: float = DEFAULT_HEIR_MARGINAL_RATE,
             f"withdrawals stack on top of a working adult's salary in their "
             f"peak earning years — there are no empty brackets to fill. The "
             f"same money in a Roth reaches them whole. This is the strongest "
-            f"estate argument for Roth conversions, and the Should I convert "
-            f"to Roth? page prices it against your own lifetime tax bill.",
+            f"estate argument for Roth conversions, and the Roth Conversions "
+            f"page prices it against your own lifetime tax bill.",
             dollars=comp.heir_tax_on_traditional))
 
     # ---- Wills and guardianship -----------------------------------------
@@ -1187,7 +1187,7 @@ def findings(h, heir_marginal_rate: float = DEFAULT_HEIR_MARGINAL_RATE,
             f"family is anywhere near it. The thing actually worth checking is "
             f"your state: "
             + (tax.state_note or "enter your state of legal residence on the "
-                                 "Who I am page and this will name it."),
+                                 "Profile page and this will name it."),
             dollars=0.0))
 
     state = (h.state_of_legal_residence or "").strip()
@@ -1219,7 +1219,7 @@ def findings(h, heir_marginal_rate: float = DEFAULT_HEIR_MARGINAL_RATE,
             "That cuts both ways: it is the largest thing your family loses, "
             "and it is the reason a military estate is usually far smaller "
             "than the household's standard of living implies. SBP and DIC are "
-            "priced on the Survivors, SBP and the VA page.",
+            "priced on the Survivor Benefits page.",
             dollars=0.0))
 
     return order_by_dollars(out)

@@ -596,8 +596,8 @@ def cash_flow(separation_date: date, basic_monthly: float, bah_monthly: float,
     if cf.monthly_expenses <= 0:
         cf.notes.append(
             "No monthly expense figure is entered, so this cannot size the gap "
-            "for you. Put your real monthly spending on the What I am worth "
-            "page and come back — it is the number this whole page turns on.")
+            "for you. Put your real monthly spending on the Accounts page and "
+            "come back — it is the number this whole page turns on.")
     else:
         cf.notes.append(
             f"Your last military pay covers only {served_share * 100:.0f}% of "
@@ -1022,9 +1022,9 @@ def findings(t: Transition) -> list[tuple[str, str, str]]:
             add(0.0, 5, "info",
                 f"With no BAH or BAS showing, selling and taking your "
                 f"{lv.days:,.0f} days come to the same money.",
-                "Check that your duty ZIP and housing status are right on Who "
-                "I am. If you do draw allowances, taking the leave wins — that "
-                "is the whole margin.")
+                "Check that your duty ZIP and housing status are right on "
+                "Profile. If you do draw allowances, taking the leave wins — "
+                "that is the whole margin.")
         if lv.cap_binds:
             over_value = lv.days_over_cap * lv.basic_daily
             add(over_value, 1, "bad",
@@ -1139,9 +1139,9 @@ def findings(t: Transition) -> list[tuple[str, str, str]]:
         "inside the TSP — the plan has no conversion facility at all. A "
         "conversion needs an IRA, which means rolling traditional money out "
         "first, and that trades the TSP's expense ratio for the IRA's. Work "
-        "the sizes on the Should I convert to Roth? page before you move "
-        "anything; the low-income year right after separation is often the "
-        "cheapest conversion window you will ever get.")
+        "the sizes on the Roth Conversions page before you move anything; the "
+        "low-income year right after separation is often the cheapest "
+        "conversion window you will ever get.")
 
     # ---- Health cover ---------------------------------------------------
     add(0.0, 3, "warn", f"Health cover after separation: {t.health.path}.",

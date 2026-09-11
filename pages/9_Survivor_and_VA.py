@@ -23,7 +23,7 @@ def _survivor_sex(member) -> str:
 
 h = get_household()
 m = h.member
-page_header("🛡️ Survivors, SBP and the VA",
+page_header("🛡️ Survivor Benefits",
             "The Survivor Benefit Plan, and the concurrent-receipt election "
             "where the default choice can be the wrong one.")
 
