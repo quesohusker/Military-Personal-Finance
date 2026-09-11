@@ -9,8 +9,8 @@ import pandas as pd
 import streamlit as st
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
-                      section, metric_row, fmt_money, fmt_pct, esc, md_money,
-                      render_findings)
+                      section, metric_row, money, mark_dirty, invalidate,
+                      fmt_money, fmt_pct, esc, md_money, render_findings)
 from ui import charts as CH
 from engine.tax import current_year as CY
 from engine.tax import tables as T
@@ -25,10 +25,23 @@ page_header("🧾 Taxes",
                 "— and why credits everyone assumes are for other people are "
                 "sitting on this one."))
 
-# Nothing on this page is written back into the plan. Every answer here is a
-# fact about ONE tax year -- what the LES says today, how many months in the
-# zone, what the spouse will actually earn -- and none of it belongs in a
-# profile that the thirty-year projection reads.
+# Almost nothing on this page is written back into the plan, and that is the
+# right answer rather than the §4a defect -- but it has to be VISIBLE, which is
+# what it was not. Every answer here except one is a fact about ONE tax year --
+# what the LES says today, how many months in the zone, which children are
+# under 17 this December -- or a filing scenario the member is trying on. None
+# of that belongs in a profile the thirty-year projection reads, so it stays
+# page-local and every widget says so (`FUNNEL_CONTRACT.md` §14).
+#
+# The exception is the spouse's wages. That is not a tax-year figure at all:
+# the plan already carries it, `engine/income/spouse.py` projects a career from
+# it, and a member correcting it here was correcting nothing.
+WHATIF = ("A what-if on this page only. Nothing typed here is saved to your "
+          "plan — it moves the figures below and nothing else.")
+WHATIF_CARD = "What-if — nothing on this card is saved to your plan."
+THIS_YEAR_CARD = ("This tax year only — nothing on this card is saved to your "
+                  "plan.")
+
 inputs, results = two_pane()
 
 # ==========================================================================
@@ -36,67 +49,108 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("Your return"):
+        st.caption(THIS_YEAR_CARD)
         status = st.selectbox(
             "How will you file this year?", T.FILING_STATUSES,
             index=T.FILING_STATUSES.index(CY.filing_status_for(h)),
             key=wkey("cy_status"),
-            help="Taken from Profile. Married members almost always file "
-                 "jointly: filing separately disqualifies the Earned Income "
-                 "Credit outright.")
+            help=WHATIF + " It opens on what your Profile implies — married "
+                 "members almost always file jointly, and filing separately "
+                 "disqualifies the Earned Income Credit outright — so change it "
+                 "here only to see what the other status would do.")
 
         n_children = st.number_input(
             "How many children will you claim?", min_value=0, max_value=15,
             value=int(h.n_dependents), step=1, key=wkey("cy_kids"),
-            help="A child under 17 at the end of the year counts for the Child "
-                 "Tax Credit; the Earned Income Credit reaches to 18, or 23 for "
-                 "a full-time student. Anyone else you support is worth $500 as "
-                 "an other dependent.")
+            help=WHATIF + " It opens at your household's dependants, which is "
+                 "a different question and usually a different number: a child "
+                 "under 17 at the end of the year counts for the Child Tax "
+                 "Credit; the Earned Income Credit reaches to 18, or 23 for a "
+                 "full-time student. Anyone else you support is worth $500 as "
+                 "an other dependent. Your household's dependant count lives on Intake.")
 
     with input_card("What has been withheld"):
+        st.caption(THIS_YEAR_CARD)
         have_les = st.toggle(
             "Do you have your LES to hand?", value=False, key=wkey("cy_haveles"),
-            help="Without it the page assumes plain W-4 settings at every "
-                 "payer, which is what causes most surprise bills in April.")
+            help=WHATIF + " Without it the page assumes plain W-4 settings at "
+                 "every payer, which is what causes most surprise bills in "
+                 "April.")
         if have_les:
             withheld_ytd = st.number_input(
                 "How much federal income tax has been withheld so far?",
                 min_value=0.0, value=0.0, step=100.0, format="%.2f",
                 key=wkey("cy_withheld"),
-                help="TAX YTD in the FED TAXES block of your LES — not the "
-                     "monthly figure. Add your spouse's year-to-date federal "
-                     "withholding from their pay stub.")
+                help=WHATIF + " TAX YTD in the FED TAXES block of your LES — "
+                     "not the monthly figure. Add your spouse's year-to-date "
+                     "federal withholding from their pay stub. It is true of "
+                     "one year and stale by the next, so the plan does not "
+                     "carry it.")
             les_month = st.selectbox(
                 "Which month does that figure run through?", list(range(1, 13)),
                 index=min(12, date.today().month) - 1, key=wkey("cy_month"),
                 format_func=lambda i: calendar.month_name[i],
-                help="The year-to-date figure is scaled straight-line to twelve "
-                     "months from here.")
+                help=WHATIF + " The year-to-date figure is scaled "
+                     "straight-line to twelve months from here.")
         else:
             withheld_ytd, les_month = None, 12
 
     if status == T.MFJ:
         with input_card("Your spouse"):
-            spouse_wages = st.number_input(
-                "What will your spouse earn this year?", min_value=0.0,
-                value=float(CY.spouse_wages_for(h)), step=1000.0, format="%.2f",
-                key=wkey("cy_spousewage"),
-                help="Gross wages before their own retirement contributions. "
-                     "This is the number that decides the Earned Income Credit "
-                     "for most military families.")
+            if h.has_spouse:
+                # The one fact on this page. It is not a tax-year figure: the
+                # plan holds it, the Career page asks it, and
+                # `engine/income/spouse.py` builds a whole earnings path from
+                # it. So it writes through, like every other shared field.
+                _wages_before = float(h.spouse_income.annual_income)
+                spouse_wages = money(
+                    "What will your spouse earn this year?", h.spouse_income,
+                    "annual_income", key=wkey("cy_spousewage"), step=1000.0,
+                    help="Gross wages before their own retirement "
+                         "contributions — the number that decides the Earned "
+                         "Income Credit for most military families. This is "
+                         "your plan's figure, shared with the Career page, and "
+                         "correcting it here corrects it everywhere.")
+                # `income/spouse.py` returns nothing at all unless `employed`
+                # is set (line 145), so a figure typed here with the flag off
+                # would be read back as zero -- the silent discard this work
+                # exists to remove. But the flag is only turned on when the
+                # member TYPES a figure on this page, never merely by opening
+                # it: a spouse who has stopped working is marked not employed
+                # on the Career page while last year's figure is still on the
+                # plan, and re-employing them on render would resurrect dead
+                # income into every projection without anyone asking.
+                if (spouse_wages > 0 and spouse_wages != _wages_before
+                        and not h.spouse_income.employed):
+                    h.spouse_income.employed = True
+                    mark_dirty()
+                    invalidate()
+            else:
+                st.caption(WHATIF_CARD + " Your plan has no spouse on it, so "
+                                         "there is nowhere to save this.")
+                spouse_wages = st.number_input(
+                    "What will your spouse earn this year?", min_value=0.0,
+                    value=0.0, step=1000.0, format="%.2f",
+                    key=wkey("cy_spousewage"),
+                    help=WHATIF + " Add a spouse on Intake and this becomes "
+                         "your plan's figure instead.")
     else:
         spouse_wages = 0.0
 
     if m.is_serving:
         with input_card("Time in the zone"):
+            st.caption(WHATIF_CARD)
             czte_months = st.number_input(
                 "How many months will you spend in a combat zone this year?",
                 min_value=0, max_value=12,
                 value=int(m.months_deployed_this_year if m.in_combat_zone else 0),
                 step=1, key=wkey("cy_czmonths"),
-                help="Any part of a month in the zone counts as a whole month. "
-                     "1 January to 1 July is SEVEN qualifying months, not six. "
-                     "Taken from Profile; change it here to see the return a "
-                     "deployment produces before you take it.")
+                help=WHATIF + " Any part of a month in the zone counts as a "
+                     "whole month: 1 January to 1 July is SEVEN qualifying "
+                     "months, not six. It opens at your plan's deployment "
+                     "months — change it here to see the return a deployment "
+                     "produces before you take it. Your real deployment months "
+                     "live on Intake.")
     else:
         czte_months = 0
 

@@ -97,9 +97,33 @@ def retired_pay(system: str, years_of_service: float,
     elif system == SYS_FINAL_PAY:
         note = "Final Pay uses your last month of basic pay, not a three-year average."
 
-    if years_of_service < 20 and system != SYS_BRS:
+    # THE 20-YEAR CLIFF, AND IT APPLIES TO BRS TOO.
+    #
+    # This used to read `and system != SYS_BRS`, so BRS alone came back from
+    # here with a pension at twelve years -- a number that will never be paid,
+    # returned confidently, while the other three systems correctly returned
+    # zero with a note saying why. Three callers were exposed: `pages/8_
+    # Retirement.py` priced a phantom pension on the very page whose subject is
+    # the cliff; `compare_systems()` below showed BRS with an annuity and the
+    # other three at zero for the same sub-20 member, which is a directly
+    # misleading comparison; and `career/transition.py` was protected only by
+    # its caller's intent.
+    #
+    # BRS is GENTLER than the legacy systems because the member keeps the TSP
+    # balance and the vested match on the way out -- not because it pays an
+    # annuity short of twenty years. Active-duty retirement vests at twenty
+    # under every one of the four systems.
+    #
+    # `roth_bridge.pension_at_separation()` applies the same cliff for the
+    # serving projection. It still does, and now agrees with this rather than
+    # working around it.
+    if years_of_service < 20:
         note = (f"At {years_of_service:g} years there is no pension at all under "
-                f"{system}. The 20-year cliff is absolute.")
+                f"{system}. The 20-year cliff is absolute."
+                + (" Under BRS the TSP balance and the vested match are still "
+                   "yours, which is what makes leaving early cost less than it "
+                   "does under the legacy systems — but there is no annuity."
+                   if system == SYS_BRS else ""))
         monthly = 0.0
         mult = 0.0
 

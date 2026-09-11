@@ -800,7 +800,16 @@ def test_the_projection_uses_the_reduced_wage_only_in_the_first_year():
     rows = run_projection(p, convert=False).rows
     assert rows[0].wages == pytest.approx(20_550, abs=1)
     assert rows[1].wages == pytest.approx(49_320, abs=1)
-    assert rows[2].wages == pytest.approx(49_320, abs=1)
+
+    # The third year used to be pinned at 49,320 as well, because the wage was
+    # one figure carried forward. It is not any more: the member crosses eight
+    # years of service in 2028 and basic pay steps at that longevity boundary,
+    # which is the whole point of reading the serving years off the career
+    # timeline (ARCHITECTURE §7 step 4). What must still hold is that the
+    # deployment is a THIS-YEAR event: the exclusion applies once, and every
+    # later year is a full taxable year.
+    assert rows[2].wages == pytest.approx(4_299.90 * 12, abs=1)
+    assert rows[2].wages > rows[1].wages > rows[0].wages
 
 
 def test_the_deployed_year_is_taxed_less_than_it_used_to_be():

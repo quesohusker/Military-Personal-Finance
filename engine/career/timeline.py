@@ -17,6 +17,7 @@ overmanned MOS can sit at a grade for years past the average.
 """
 
 from __future__ import annotations
+import math
 from dataclasses import dataclass, field, asdict, fields as dataclass_fields
 
 from engine.pay import grades as G
@@ -245,7 +246,12 @@ def project(member, timeline: CareerTimeline, start_year: int,
         basepay_table = BP.load()
 
     end_yos = timeline.separation_at_years_of_service
-    n = years or max(1, int(round(end_yos - member.years_of_service)) + 1)
+    # CEILING, not round. The walk steps a whole year at a time from wherever
+    # the member is NOW, and years of service is no longer a whole number --
+    # intake derives it from the DIEMS date, so 6.3 is the ordinary case. With
+    # `round` a member at 6.9 heading for 20 ran out of iterations at 19.9 and
+    # the loop below never got the chance to land them on the target.
+    n = years or max(1, int(math.ceil(end_yos - member.years_of_service - 1e-9)) + 1)
 
     promotions = sorted(timeline.promotions, key=lambda p: p.at_years_of_service)
     moves = sorted(timeline.moves, key=lambda m: m.at_years_of_service)
@@ -260,7 +266,21 @@ def project(member, timeline: CareerTimeline, start_year: int,
         yos = member.years_of_service + i
         year = start_year + i
         if yos > end_yos + 1e-9:
-            break
+            # THE MEMBER CROSSES THE SEPARATION POINT DURING THIS YEAR, and the
+            # year they cross it is a year they serve. Stopping at the last
+            # whole step instead used to end a career SHORT of its own target:
+            # from 6.3 years the steps run 6.3, 7.3 ... 19.3, and a member who
+            # said "I separate at twenty" was modelled as separating at 19.3 --
+            # which is on the wrong side of the twenty-year cliff, so
+            # `pension_at_separation()` correctly priced no pension at all and
+            # silently deleted a lifetime annuity.
+            #
+            # It never showed up while years of service was a whole number
+            # typed by hand. It appeared the moment intake began deriving it
+            # from the DIEMS date, which makes a fraction the ordinary case.
+            if rows and rows[-1].years_of_service >= end_yos - 1e-9:
+                break
+            yos = end_yos
 
         promoted = False
         for p in promotions:

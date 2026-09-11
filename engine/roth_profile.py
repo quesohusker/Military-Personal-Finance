@@ -73,11 +73,142 @@ class Person:
 
 
 @dataclass
+class ServiceYear:
+    """
+    One year in uniform, already resolved.
+
+    The engine does not compute military pay. `engine/career/timeline.py`
+    already models a career year by year -- basic pay stepping at longevity
+    boundaries, jumping at promotion, BAH moving by thousands on a PCS -- and
+    `engine/pay/taxable.py` already owns what of it is taxable. A second pay
+    model would be a second set of figures to keep verified, so the bridge
+    runs those engines and puts the ANSWER here.
+
+    The split is the point. `taxable_pay` is what reaches a federal return:
+    basic pay, taxable special pays and any bonus, less anything the Combat
+    Zone Tax Exclusion removes. `nontaxable_pay` is everything else the member
+    is actually paid -- BAH, BAS, non-taxable special pays and the excluded
+    part of a deployed year. It is spendable and it is invisible to the tax
+    closure. For the E-5 sample the two are $20,550 and $64,265: 76% of the
+    pay never reaches a return.
+    """
+    year: int = 0
+    years_of_service: float = 0.0
+    grade: str = ""
+    promoted: bool = False
+    duty_zip: str = ""
+    duty_label: str = ""
+
+    basic_pay_monthly: float = 0.0         # the high-3 is averaged off this
+    taxable_pay: float = 0.0               # reaches the return
+    nontaxable_pay: float = 0.0            # BAH, BAS, CZTE-excluded pay
+
+    # TSP. Service automatic and matching contributions ALWAYS land in the
+    # traditional balance, whatever the member designates their own as --
+    # engine/retirement/tsp.py computes them and says so.
+    tsp_member_traditional: float = 0.0
+    tsp_member_roth: float = 0.0
+    tsp_service: float = 0.0
+
+    @property
+    def total_pay(self) -> float:
+        return self.taxable_pay + self.nontaxable_pay
+
+    @property
+    def member_contribution(self) -> float:
+        """The member's own money, which leaves the paycheck."""
+        return self.tsp_member_traditional + self.tsp_member_roth
+
+    @property
+    def traditional_in(self) -> float:
+        return self.tsp_member_traditional + self.tsp_service
+
+    @property
+    def nontaxable_share(self) -> float:
+        return (self.nontaxable_pay / self.total_pay) if self.total_pay else 0.0
+
+
+@dataclass
+class MilitaryService:
+    """
+    The serving years, if there are any. §4b: `Profile` had no concept of being
+    in uniform, which is why the spine stopped at the retiree.
+
+    `serving` False -- the default -- means there is nothing here and the
+    projection behaves exactly as it did before, which is what keeps the
+    retiree path unmoved. `not_modelled` says why there is no schedule when
+    there should have been one: a Guard or Reserve career is drill pay and
+    retirement points, and running it through the active-duty tables would be
+    a confident wrong number rather than an honest refusal (§8).
+
+    `assumptions` carries, in plain words, every answer the plan did not supply
+    and the schedule had to stand in for. Nothing reads it to make a decision;
+    it exists so that whatever shows a figure from this block can say what the
+    figure rests on.
+    """
+    serving: bool = False
+    component: str = ""
+    grade_now: str = ""
+    years_of_service_now: float = 0.0
+
+    #: The last year of military pay. The pension, if any, starts the year
+    #: after -- the schedule is in whole years, so paying both in the same one
+    #: would pay the member twice.
+    separation_year: int = 0
+    separation_years_of_service: float = 0.0
+    separation_grade: str = ""
+    high_three_monthly: float = 0.0        # average of the last 36 months
+
+    #: A civilian job held WHILE serving. After separation the projection falls
+    #: back to `Person.annual_wages`, because nothing in the app asks what a
+    #: member expects to earn as a civilian; `civilian_wages_entered` says
+    #: whether that fallback is an answer or an assumption.
+    civilian_wages_annual: float = 0.0
+    civilian_wages_entered: bool = False
+
+    #: What healthcare costs while still serving. Active duty is zero; the
+    #: retiree enrolment fee starts with the pension and lives on
+    #: MilitaryRetirement.tricare_annual_cost.
+    tricare_annual_cost: float = 0.0
+
+    years: list = field(default_factory=list)        # ServiceYear
+    assumptions: list = field(default_factory=list)  # plain text
+    not_modelled: str = ""
+
+    #: _build() cannot infer the element type of a bare `list`, so name it.
+    _list_types = {"years": ServiceYear}
+
+    def year_row(self, year: int):
+        for r in self.years:
+            if r.year == year:
+                return r
+        return None
+
+    def covers(self, year: int) -> bool:
+        return bool(self.serving) and self.year_row(year) is not None
+
+    @property
+    def first_year(self) -> int:
+        return self.years[0].year if self.years else 0
+
+    @property
+    def pension_start_year(self) -> int:
+        """0 when not serving, meaning any pension is already flowing."""
+        return (self.separation_year + 1) if self.serving else 0
+
+
+@dataclass
 class MilitaryRetirement:
     system: str = SYS_HIGH3
     years_of_service: float = 20.0
     retired_pay_monthly: float = 0.0       # gross, today's dollars
     retirement_year: int = 2020
+
+    # The first year retired pay, VA compensation and CRSC are actually paid.
+    # 0 means "already flowing", which is every retiree this engine has ever
+    # been handed and is why the retiree path does not move. For someone still
+    # serving it is the year after the separation point on their timeline.
+    pension_start_year: int = 0
 
     # COLA. The projection is in real dollars, so a full-CPI COLA means 0.0
     # real drift. REDUX pays CPI minus 1% until the age-62 recomputation, which
@@ -262,6 +393,10 @@ class Profile:
     has_spouse: bool = True
 
     military: MilitaryRetirement = field(default_factory=MilitaryRetirement)
+    # The years before the pension, for anyone who has not had them yet. Empty
+    # and serving=False for every retiree and veteran, which is the whole
+    # population the projection was written for before this existed.
+    service: MilitaryService = field(default_factory=MilitaryService)
     other_income: OtherIncome = field(default_factory=OtherIncome)
     taxable: TaxableAccount = field(default_factory=TaxableAccount)
     assumptions: Assumptions = field(default_factory=Assumptions)
@@ -327,13 +462,21 @@ def _build(cls, data: Any):
         return data
 
     hints = get_type_hints(cls)
+    # A bare `list` annotation says nothing about what is in the list, so a
+    # class that holds dataclass rows names their type in `_list_types` and
+    # they are rebuilt as objects rather than left as dicts. Without this a
+    # reloaded plan would hand the projection a list of dicts and fail on the
+    # first attribute access -- silently, one year into a sixty-year walk.
+    list_types = getattr(cls, "_list_types", {})
     kwargs = {}
     for f in fields(cls):
         if f.name not in data:
             continue
         value = data[f.name]
         ftype = hints.get(f.name, f.type)
-        if is_dataclass(ftype) and isinstance(value, dict):
+        if f.name in list_types and isinstance(value, list):
+            kwargs[f.name] = [_build(list_types[f.name], x) for x in value]
+        elif is_dataclass(ftype) and isinstance(value, dict):
             kwargs[f.name] = _build(ftype, value)
         elif ftype is tuple and isinstance(value, list):
             kwargs[f.name] = tuple(value)

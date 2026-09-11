@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import date
 
-from engine.profile import (Household, RETIRED,
+from engine.profile import (Household, RETIRED, ACTIVE,
                             SYS_HIGH3 as APP_HIGH3, SYS_REDUX as APP_REDUX,
                             SYS_BRS as APP_BRS, SYS_FINAL_PAY as APP_FINAL_PAY,
                             SYS_NONE as APP_NONE)
@@ -42,7 +42,11 @@ from engine.tax import state as ST
 from engine.tax.federal import TaxPolicy, SCENARIO_CURRENT
 from engine import mortality as MORT
 from engine.pay import taxable as TP
+from engine.pay import bah as BAH
+from engine.pay import basepay as BP
+from engine.career import timeline as TL
 from engine.retirement import tsp as TSP
+from engine.retirement import systems as SYS
 
 
 # --------------------------------------------------------------------------
@@ -320,6 +324,313 @@ def _retirement_year(m, start_year: int) -> int:
     return int(start_year)
 
 
+# --------------------------------------------------------------------------
+# The serving years (docs/ARCHITECTURE.md §7 step 4)
+# --------------------------------------------------------------------------
+#
+# `Profile` now has a place to describe being in uniform, and this is what
+# fills it. Nothing here models pay: `engine/career/timeline.py` walks the
+# career -- promotions, longevity steps, PCS moves, BAH by ZIP --
+# `engine/pay/taxable.py` says what of it is taxable, `engine/retirement/tsp.py`
+# computes the BRS match and the deferral limit, and `engine/retirement/
+# systems.py` prices the pension. This file only asks them, in order, and
+# writes down the answer.
+
+#: Guard and Reserve pay is drill pay and a retirement-points record, and the
+#: pension starts at 60 rather than at separation. None of that is the
+#: active-duty tables, so the schedule refuses rather than running a reservist
+#: through them (§8).
+RESERVE_NOT_MODELLED = (
+    "Guard and Reserve service is not modelled year by year yet. The pay is "
+    "drill pay rather than the active-duty table, retirement credit is counted "
+    "in points, and the pension starts at 60 instead of at separation. Running "
+    "it through the active-duty tables would produce a confident wrong number."
+)
+
+NO_PAY_TABLE_NOT_MODELLED = (
+    "No basic pay table is installed, so the serving years cannot be priced. "
+    "Run `python scripts/refresh_basepay.py` to install one."
+)
+
+#: The published tables, loaded once. A BAH file is 41,000 ZIP codes and the
+#: bridge is called on every page render, so it is read once per process. Both
+#: are static reference data for a given year.
+_TABLES: dict = {}
+
+
+def _pay_tables():
+    if "loaded" not in _TABLES:
+        try:
+            _TABLES["bah"] = BAH.load()
+        except Exception:                                    # pragma: no cover
+            _TABLES["bah"] = None
+        try:
+            _TABLES["basepay"] = BP.load()
+        except Exception:                                    # pragma: no cover
+            _TABLES["basepay"] = None
+        _TABLES["loaded"] = True
+    return _TABLES["bah"], _TABLES["basepay"]
+
+
+def _timeline_for(h: Household, timeline=None) -> TL.CareerTimeline:
+    """
+    The member's own timeline, with the separation point made runnable.
+
+    A separation point already behind the member -- a plan left alone for two
+    years, or a timeline that was never opened -- would produce a schedule with
+    no years in it, so it is pulled forward to this year rather than dropped.
+    `timeline` is the seam for a course of action (§7 step 6): the same
+    household, scheduled against a different career.
+    """
+    t = timeline if timeline is not None else h.career
+    if t is None:
+        t = TL.CareerTimeline()
+    yos = float(h.member.years_of_service or 0.0)
+    if float(t.separation_at_years_of_service) < yos:
+        t = TL.CareerTimeline(promotions=list(t.promotions), moves=list(t.moves),
+                              separation_at_years_of_service=yos,
+                              entered=t.entered)
+    return t
+
+
+def _service_assumptions(m, t: TL.CareerTimeline, bah_data, rows) -> list:
+    """What the schedule had to stand in for, in the member's own terms."""
+    out = []
+    if not t.entered:
+        out.append(
+            "Nobody has answered the Career page for this plan, so it is "
+            f"modelled as {t.separation_at_years_of_service:g} years of service "
+            f"with no further promotions. Both are answers the member has to "
+            f"give; neither is a forecast.")
+    elif not t.promotions:
+        out.append(f"No further promotions: the pay is {m.grade} pay for the "
+                   f"rest of the career, stepping only at longevity boundaries.")
+    if bah_data is None:
+        out.append("No BAH table is installed, so the housing allowance is "
+                   "missing from the pay in every serving year.")
+    elif rows and rows[0].bah_monthly <= 0 and not m.lives_in_government_housing:
+        out.append("No BAH rate was found for this duty ZIP, so the housing "
+                   "allowance is missing from the pay.")
+    if not t.moves:
+        out.append("No PCS moves are on the timeline, so BAH is held at the "
+                   "current duty station's rate for the whole career. A move "
+                   "can change it by thousands a month.")
+    return out
+
+
+def build_service(h: Household, inputs: "RothInputs | None" = None, *,
+                  start_year: int | None = None,
+                  timeline=None) -> RP.MilitaryService:
+    """
+    The resolved serving years for this household.
+
+    Returns an empty, `serving=False` block for anyone not in uniform -- which
+    is what leaves the retiree path exactly as it was.
+    """
+    m = h.member
+    sy = int(start_year or (inputs.start_year if inputs else date.today().year))
+
+    if m is None or not m.is_serving:
+        return RP.MilitaryService()
+    if m.component != ACTIVE:
+        return RP.MilitaryService(serving=False, component=m.component,
+                                  grade_now=m.grade,
+                                  years_of_service_now=float(m.years_of_service),
+                                  not_modelled=RESERVE_NOT_MODELLED)
+
+    bah_data, pay_table = _pay_tables()
+    if pay_table is None:                                    # pragma: no cover
+        return RP.MilitaryService(serving=False, component=m.component,
+                                  grade_now=m.grade,
+                                  years_of_service_now=float(m.years_of_service),
+                                  not_modelled=NO_PAY_TABLE_NOT_MODELLED)
+
+    t = _timeline_for(h, timeline)
+    raise_real = float(getattr(h.assumptions, "pay_raise_real_pct", 0.0)) / 100.0
+
+    def _refuse(reason: str) -> RP.MilitaryService:
+        return RP.MilitaryService(serving=False, component=m.component,
+                                  grade_now=m.grade,
+                                  years_of_service_now=float(m.years_of_service),
+                                  not_modelled=reason)
+
+    try:
+        rows = TL.project(m, t, sy, bah_data=bah_data, basepay_table=pay_table,
+                          annual_raise=raise_real)
+    except Exception as exc:
+        # A grade the tables do not carry is the case this catches, and it
+        # raises from inside the timeline. A projection that cannot price the
+        # pay must say so, not run on zeroes.
+        return _refuse(f"The serving years could not be priced: {exc}")
+    if not rows:                                             # pragma: no cover
+        return _refuse("The career timeline produced no years to project.")
+    if rows[0].basic_pay_monthly <= 0:
+        return _refuse(
+            f"No basic pay could be looked up for {m.grade or 'that grade'} at "
+            f"{float(m.years_of_service):g} years of service, so there is no "
+            f"pay to project. Enter it from your LES on the Income page.")
+
+    is_brs = (m.retirement_system == APP_BRS)
+    pct = max(0.0, float(m.tsp_contribution_pct))
+    roth_share = min(1.0, max(0.0, float(m.tsp_roth_share)))
+    special_taxable = bool(m.special_pay_taxable)
+
+    # The first year is the only one that can be atypical. A deployment is a
+    # this-year event: `RothInputs.wages_this_year` carries the Combat Zone Tax
+    # Exclusion already applied (see `_member_wages_this_year`), and setting it
+    # to 0 means "this year is like every other". The civilian half of that
+    # input is not military pay, so it comes back out.
+    civilian = float(m.civilian_wages_annual or 0.0)
+    first_taxable = None
+    if inputs is not None and float(inputs.wages_this_year) > 0:
+        first_taxable = max(0.0, float(inputs.wages_this_year) - civilian)
+
+    years = []
+    for idx, r in enumerate(rows):
+        first = (idx == 0)
+        basic_annual = r.basic_pay_monthly * 12.0
+        special_annual = r.special_pay_monthly * 12.0
+        bonus = float(m.bonus_annual_taxable or 0.0) if first else 0.0
+
+        # Everything the member is paid, and then the part of it a return sees.
+        total = (basic_annual + special_annual
+                 + (r.bah_monthly + r.bas_monthly) * 12.0 + bonus)
+        taxable = basic_annual + (special_annual if special_taxable else 0.0) + bonus
+        if first and first_taxable is not None:
+            taxable = min(first_taxable, total)
+        taxable = max(0.0, min(taxable, total))
+
+        # TSP. The member's own money is a percentage of BASIC pay -- not of
+        # total compensation, which is the mistake tsp.py exists to correct --
+        # and is bounded by the elective deferral limit for their age. The
+        # service's automatic and matching contributions are computed on the
+        # uncapped election, because the match follows the percentage rather
+        # than the dollars, and they always land in the traditional balance.
+        age = r.year - int(m.birth_year)
+        own = min(basic_annual * pct, TSP.elective_limit(age))
+        own_roth = own * roth_share
+        match = TSP.service_match(basic_annual, pct, is_brs,
+                                  float(r.years_of_service))
+
+        years.append(RP.ServiceYear(
+            year=int(r.year), years_of_service=float(r.years_of_service),
+            grade=r.grade, promoted=bool(r.promoted_this_year),
+            duty_zip=r.duty_zip or "", duty_label=r.duty_label or "",
+            basic_pay_monthly=float(r.basic_pay_monthly),
+            taxable_pay=float(taxable), nontaxable_pay=float(total - taxable),
+            tsp_member_traditional=float(own - own_roth),
+            tsp_member_roth=float(own_roth),
+            tsp_service=float(match.total_service)))
+
+    last = rows[-1]
+    sv = RP.MilitaryService(
+        serving=True, component=m.component, grade_now=m.grade,
+        years_of_service_now=float(m.years_of_service),
+        separation_year=int(last.year),
+        separation_years_of_service=float(last.years_of_service),
+        separation_grade=last.grade,
+        high_three_monthly=_high_three(rows),
+        civilian_wages_annual=civilian,
+        civilian_wages_entered=civilian > 0,
+        tricare_annual_cost=0.0,          # active duty pays nothing for it
+        years=years,
+        assumptions=_service_assumptions(m, t, bah_data, rows))
+
+    if not sv.civilian_wages_entered:
+        sv.assumptions.append(
+            "Nothing in the plan says what you expect to earn after you take "
+            "the uniform off, so the projection carries your current taxable "
+            "pay forward as a civilian wage from the year after you separate. "
+            "That is an assumption, not an answer.")
+
+    # THE ASSUMPTION THAT MOVES THE ENDING BALANCE MORE THAN ANY OTHER, and it
+    # was the one nobody had written down.
+    #
+    # Spending is one figure -- "what do you spend in a month" -- held flat in
+    # REAL terms for the whole plan, while military pay steps at every
+    # longevity boundary and jumps at every promotion. Everything not spent is
+    # reinvested. For a retiree that is close to true: they are at their
+    # terminal standard of living and the income is fixed. For someone at six
+    # years it implies a savings rate they have not agreed to and would
+    # probably not recognise, compounded for forty years, and it is what
+    # produces a seven-figure taxable account out of an E-5.
+    #
+    # The arithmetic is the plan's own and is not second-guessed here: a member
+    # who really does bank two thirds of their pay should see that future. But
+    # a figure this consequential cannot be silent, so the rate is stated as a
+    # number the member can check against their own bank statement. §8: a
+    # number with no visible derivation is worse than no number.
+    annual_spend = float(h.monthly_expenses or 0.0) * 12.0
+    if sv.years and annual_spend > 0:
+        first_pay = float(sv.years[0].taxable_pay + sv.years[0].nontaxable_pay)
+        if first_pay > annual_spend:
+            rate = 1.0 - annual_spend / first_pay
+            # Two money figures in one string, so NO dollar signs: Streamlit
+            # reads the span between a pair of them as LaTeX and eats both.
+            # "in today's dollars" carries the unit instead.
+            sv.assumptions.append(
+                f"Your spending is held at {annual_spend:,.0f} a year in "
+                f"today's dollars for the whole plan, while your pay steps with "
+                f"longevity and promotion. Against {first_pay:,.0f} of military "
+                f"pay this year that is a saving rate of {rate * 100:.0f}%, and "
+                f"everything not spent is invested in a taxable account and "
+                f"compounds. If you would not recognise that rate, raise your "
+                f"monthly spending figure — it drives the ending balance more "
+                f"than any return assumption does.")
+    return sv
+
+
+def _high_three(rows) -> float:
+    """
+    The high-36 average, off the basic pay the timeline actually produced.
+
+    Fewer than three years on the schedule means a member who is already
+    nearly out; averaging the years there are is the closest thing to the
+    truth and is what the pension is then priced from.
+    """
+    if not rows:
+        return 0.0
+    tail = rows[-3:]
+    return sum(r.basic_pay_monthly for r in tail) / len(tail)
+
+
+def pension_at_separation(m, sv: RP.MilitaryService) -> tuple[float, str]:
+    """
+    Monthly retired pay the day after separation, in today's dollars, and the
+    sentence that says where it came from.
+
+    THE TWENTY-YEAR CLIFF IS APPLIED HERE, FOR EVERY SYSTEM.
+    `engine/retirement/systems.py::retired_pay()` zeroes a pension short of
+    twenty years for the legacy systems but not for BRS, so a BRS member
+    leaving at twelve comes back from it with a pension they will never be
+    paid. BRS is gentler than the legacy systems because the member keeps the
+    TSP and the vested match -- not because it pays an annuity at twelve years.
+    """
+    if not sv.serving:
+        return 0.0, ""
+    system = m.retirement_system
+    years = float(sv.separation_years_of_service)
+    if system not in (SYS.SYS_FINAL_PAY, SYS.SYS_HIGH3, SYS.SYS_REDUX, SYS.SYS_BRS):
+        return 0.0, ("No retirement system could be resolved from the DIEMS "
+                     "date, so no pension is modelled.")
+    if years < 20.0:
+        return 0.0, (f"Separating at {years:g} years is short of twenty, so "
+                     f"there is no pension under {system} and none is modelled. "
+                     + ("Under BRS the TSP balance and the vested match are "
+                        "still yours." if system == SYS.SYS_BRS else
+                        "There is no partial credit."))
+
+    # Final Pay is the one system that is not an average: it uses the last
+    # month of basic pay.
+    base = (sv.years[-1].basic_pay_monthly if (system == SYS.SYS_FINAL_PAY and sv.years)
+            else sv.high_three_monthly)
+    pay = SYS.retired_pay(system, years, base)
+    return float(pay.monthly), (
+        f"{pay.multiplier * 100:.0f}% of a ${base:,.0f} "
+        f"{'final month of basic pay' if system == SYS.SYS_FINAL_PAY else 'high-3 average'}"
+        f" at {years:g} years under {system}.")
+
+
 def _healthcare_extras(h: Household) -> float:
     hc = h.healthcare
     return (12.0 * (float(hc.fedvip_dental_monthly) + float(hc.ltc_premium_monthly))
@@ -409,13 +720,19 @@ def default_inputs(h: Household, start_year: int | None = None) -> RothInputs:
 
 
 def to_roth_profile(h: Household, inputs: RothInputs | None = None, *,
-                    start_year: int | None = None) -> Profile:
+                    start_year: int | None = None,
+                    timeline=None) -> Profile:
     """
     Build the engine's Profile from the Household plus the page inputs.
 
     With `inputs` omitted the defaults are used, which is enough for a valid
     engine profile from any Household -- including an active-duty member with
     no retired pay and nothing to convert.
+
+    `timeline` schedules the serving years against a career other than the one
+    on the plan. It is how a course of action gets priced (§7 step 6): stay to
+    twenty and leave at twelve are the same household with two timelines, and
+    two Profiles the projection can be run over side by side.
     """
     m = h.member
     i = inputs or default_inputs(h, start_year)
@@ -468,13 +785,39 @@ def to_roth_profile(h: Household, inputs: RothInputs | None = None, *,
         traditional_contribution=sp_contrib,
     )
 
+    # The serving years, and what they end in. For anyone not in uniform this
+    # is an empty block and every line below falls back to what the Household
+    # already holds, which is why the retiree path is untouched.
+    p.service = build_service(h, i, start_year=sy, timeline=timeline)
+    sv = p.service
+
     system = SYSTEM_MAP.get(m.retirement_system, RP.SYS_NONE)
     has_tricare, tricare_fee, part_b_age = _tricare(h)
+    retired_monthly = float(m.retired_pay_monthly)
+    retirement_year = _retirement_year(m, sy)
+    years_served = float(m.years_of_service)
+    if sv.serving:
+        retired_monthly, _ = pension_at_separation(m, sv)
+        retirement_year = sv.separation_year
+        years_served = sv.separation_years_of_service
+        # Retiree TRICARE costs what a retiree pays, but only from the year the
+        # member becomes one, and only if they reach twenty. Before that it is
+        # free, which `service.tricare_annual_cost` carries.
+        plan_name = (h.healthcare.tricare_plan or "").strip()
+        tricare_fee = (RP.MilitaryRetirement().tricare_annual_cost
+                       if (retired_monthly > 0 and plan_name in ("Prime", "Select"))
+                       else 0.0)
+        if retired_monthly <= 0:
+            sv.assumptions.append(
+                "Leaving before twenty years means no retiree TRICARE either. "
+                "What health cover costs you after that is not modelled.")
+
     p.military = RP.MilitaryRetirement(
         system=system,
-        years_of_service=float(m.years_of_service),
-        retired_pay_monthly=float(m.retired_pay_monthly),
-        retirement_year=_retirement_year(m, sy),
+        years_of_service=years_served,
+        retired_pay_monthly=retired_monthly,
+        retirement_year=retirement_year,
+        pension_start_year=sv.pension_start_year,
         cola_real_drift=(REDUX_REAL_DRIFT
                          if (system == RP.SYS_REDUX or not a.cola_full) else 0.0),
         va_disability_monthly=float(m.va_disability_monthly),
@@ -565,10 +908,52 @@ def describe(p: Profile) -> list[tuple[str, str]]:
 
     mil = p.military
     a = p.assumptions
+    sv = p.service
     trad = p.primary.traditional_balance + (p.spouse.traditional_balance if p.has_spouse else 0.0)
     roth = p.primary.roth_balance + (p.spouse.roth_balance if p.has_spouse else 0.0)
     state_note = "" if state_is_known(p.state) else " (not in the state table; modelled as no income tax)"
     rule = ST.get_rule(p.state)
+
+    # The serving years, when the plan has any. A pension that has not started
+    # has to say when it does, or the figure reads as money arriving now.
+    serving_rows = []
+    if sv.serving and sv.years:
+        first = sv.years[0]
+        serving_rows.append((
+            "Your years in uniform",
+            f"{len(sv.years)} years modelled, {first.year}–{sv.separation_year}: "
+            f"{sv.grade_now} at {sv.years_of_service_now:g} years now, "
+            f"{sv.separation_grade} at {sv.separation_years_of_service:g} when you "
+            f"separate. {money(first.total_pay)} this year, "
+            f"{pct(first.nontaxable_share, 0)} of it untaxed."))
+        serving_rows.append((
+            "High-3 at separation",
+            f"{money(sv.high_three_monthly)}/mo, averaged over the last 36 months "
+            f"of basic pay the timeline produces"))
+    elif sv.not_modelled:
+        serving_rows.append(("Your years in uniform", sv.not_modelled))
+
+    pension_when = (f" · from {mil.pension_start_year}"
+                    if mil.pension_start_year and mil.retired_pay_monthly > 0 else "")
+
+    if sv.serving and sv.years:
+        first = sv.years[0]
+        wages_text = (
+            f"{money(first.total_pay)} of military pay in {first.year}, "
+            f"{money(first.taxable_pay)} of it taxable, stepping with longevity "
+            f"and promotion to {sv.separation_year}; then "
+            f"{money(p.primary.annual_wages)} a year to "
+            f"{p.primary.work_through_year}"
+            + ("" if sv.civilian_wages_entered else " (assumed, not entered)"))
+    else:
+        wages_text = (
+            (f"{money(p.primary.wages_first_year)} this year "
+             f"(combat-zone pay excluded), then "
+             if p.primary.wages_first_year > 0 else "")
+            + f"{money(p.primary.annual_wages)} through {p.primary.work_through_year}")
+    if p.has_spouse:
+        wages_text += (f"; spouse {money(p.spouse.annual_wages)} through "
+                       f"{p.spouse.work_through_year}")
 
     rows = [
         ("Filing status", p.filing_status),
@@ -576,18 +961,14 @@ def describe(p: Profile) -> list[tuple[str, str]]:
          f"{p.state or 'not set'}{state_note} — {pct(rule.rate, 2)} on ordinary income, "
          f"military retired pay {'exempt' if rule.military_pension_exempt >= 1 else 'taxed'}"),
         ("Retirement system", mil.system),
+        *serving_rows,
         ("Retired pay, gross", f"{money(mil.retired_pay_monthly * 12)}/yr"
+                               + pension_when
                                + (" · SBP elected" if mil.sbp_elected else "")
                                + (" · CRDP" if mil.crdp_applies and mil.va_disability_monthly > 0 else "")),
         ("VA compensation (tax-free)", f"{money(mil.va_disability_monthly * 12)}/yr"
                                        + (f" · {mil.va_rating}%" if mil.va_rating else "")),
-        ("Wages this year",
-         (f"{money(p.primary.wages_first_year)} this year "
-          f"(combat-zone pay excluded), then "
-          if p.primary.wages_first_year > 0 else "")
-         + f"{money(p.primary.annual_wages)} through {p.primary.work_through_year}"
-                            + (f"; spouse {money(p.spouse.annual_wages)} through "
-                               f"{p.spouse.work_through_year}" if p.has_spouse else "")),
+        ("Wages this year", wages_text),
         ("Social Security at full retirement age",
          f"{money(p.primary.ss_pia_monthly)}/mo, claimed at {p.primary.ss_claim_age}"
          + (f"; spouse {money(p.spouse.ss_pia_monthly)}/mo at {p.spouse.ss_claim_age}"
@@ -605,4 +986,18 @@ def describe(p: Profile) -> list[tuple[str, str]]:
         ("Future federal tax law", p.tax_policy.scenario
          + (f", from {p.tax_policy.change_year}" if p.tax_policy.scenario != SCENARIO_CURRENT else "")),
     ]
+
+    # THE ASSUMPTIONS, SURFACED. `build_service()` writes down every place the
+    # schedule had to assume something rather than read it, and until now
+    # nothing rendered them: five carefully worded lines recorded on the
+    # Profile and shown to nobody. That is the §8 failure in its purest form --
+    # a projection whose largest inputs are invisible - and `describe()` is the
+    # one thing a page actually reads, so they belong here.
+    #
+    # Numbered, because "Assumption" repeated five times reads as one row in a
+    # table and the reader cannot tell there are five.
+    for n, note in enumerate(sv.assumptions, 1):
+        rows.append((f"Assumption {n} of {len(sv.assumptions)}", note))
+    if sv.not_modelled:
+        rows.append(("Not modelled", sv.not_modelled))
     return rows

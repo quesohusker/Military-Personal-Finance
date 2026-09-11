@@ -227,6 +227,16 @@ class ServiceMember:
     gross_pay_monthly_confirmed: float = 0.0
     net_pay_monthly_confirmed: float = 0.0
 
+    # High-3: the average of the highest 36 months of BASIC pay, and the figure
+    # every retirement multiplier is applied to. The app can approximate it --
+    # the published table gives today's basic pay for this grade and longevity,
+    # which IS the high-3 of someone retiring today and an understatement for
+    # anyone still being promoted. A member reading their own pay history knows
+    # better, so this is an override on exactly the convention
+    # `basic_pay_monthly_override` already uses: 0.0 means use the table.
+    # Read it through `high_3_monthly()`, never raw.
+    high_3_monthly_override: float = 0.0
+
     # Deployment
     is_deployed: bool = False
     months_deployed_this_year: int = 0
@@ -266,6 +276,25 @@ class ServiceMember:
     # Leaving the service (non-medical)
     leave_balance_days: float = 0.0
     planned_separation_date: str = ""       # ISO date; blank = not planned
+
+    # Leaving the service through the Integrated Disability Evaluation System.
+    #
+    # These four are DETERMINATIONS, not knobs. A board assigns the DoD rating,
+    # a line-of-duty finding says whether the condition is combat-related, and
+    # placement on the Temporary Disability Retired List is an order. Between
+    # them they decide a one-time cheque against a lifetime pension with
+    # TRICARE, whether that cheque is taxed at all, and whether the VA recoups
+    # it out of monthly compensation -- the largest single cliff in the app.
+    # They are facts about the member and they belong on the plan.
+    #
+    # The DoD rating is NOT the VA rating: the two are assigned by different
+    # bodies against different standards and routinely differ, which is why
+    # this is its own field and not `va_rating`. 0 means no board has rated
+    # the member yet.
+    dod_disability_rating: int = 0
+    disability_combat_related: bool = False
+    disability_incurred_in_combat_zone: bool = False
+    on_tdrl: bool = False
 
     # Guard and Reserve
     retirement_points: int = 0
@@ -308,6 +337,19 @@ class ServiceMember:
         if years < 0:
             return max(0.0, float(self.time_in_grade_years))
         return years
+
+    def high_3_monthly(self, table_monthly: float = 0.0) -> float:
+        """
+        High-3 monthly basic pay: the member's figure, or the table's.
+
+        Same rule as `taxable.resolve_basic_monthly()` and
+        `prime_directive.monthly_basic_pay()` -- what the member typed wins,
+        the published table is the fallback -- so a plan nobody has corrected
+        still produces a pension figure.
+        """
+        if self.high_3_monthly_override > 0:
+            return float(self.high_3_monthly_override)
+        return float(table_monthly)
 
     @property
     def retirement_system(self) -> str:

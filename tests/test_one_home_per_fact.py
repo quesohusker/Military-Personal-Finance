@@ -156,7 +156,8 @@ HELPERS = {"money", "pct", "number", "integer", "text", "toggle", "choice"}
 
 #: `ui.panel` helper -> the Household attribute path its second argument names.
 _OBJ_PATHS = {"h": "", "m": "member", "e": "estate", "hc": "healthcare",
-              "inv": "investments", "ss": "social_security", "hz": "housing"}
+              "inv": "investments", "ss": "social_security", "hz": "housing",
+              "a": "assumptions", "t": "career"}
 
 
 def _page_bindings(path: pathlib.Path):
@@ -207,31 +208,80 @@ def test_every_shared_field_is_written_through_a_panel_helper():
         "§6 makes them the place a low rating gets fixed, so they should")
 
 
-def test_the_pages_that_write_nothing_back_are_a_recorded_gap_not_a_regression():
-    """
-    §4a named three pages that seed page-local widgets and write nothing back.
-    They are still that way, deliberately and on the record (§14).
+#: The exact words a page-local knob carries, so a reader knows it will not
+#: stick. Established on `9_Survivor_and_VA.py`, recorded in §14.
+WHATIF_PHRASE = "A what-if on this page only"
 
-    This test exists so the gap cannot quietly grow: if a FOURTH page starts
-    doing it, or if one of these is fixed, this fails and the contract is
-    updated rather than drifting out of date.
+
+#: What each of §4a's three pages writes back, exactly. §14 used to record
+#: these as three zeroes -- thirty-odd widgets seeded from the plan and thrown
+#: away. They write back now, and the set is pinned rather than the count so a
+#: change says WHICH fact moved.
+WRITES_BACK = {
+    "8_Retirement.py": {
+        ("member", "high_3_monthly_override"),
+        ("career", "separation_at_years_of_service"),
+        ("assumptions", "real_discount_rate_pct"),
+    },
+    "11_Separation_and_Insurance.py": {
+        ("member", "dod_disability_rating"),
+        ("member", "disability_combat_related"),
+        ("member", "disability_incurred_in_combat_zone"),
+        ("member", "on_tdrl"),
+        ("member", "high_3_monthly_override"),
+        ("member", "va_disability_monthly"),
+        ("member", "sgli_coverage"),
+        ("career", "separation_at_years_of_service"),
+        ("", "mortgage_balance"),
+    },
+    "22_This_Years_Taxes.py": {
+        ("h.spouse_income", "annual_income"),
+    },
+}
+
+
+def test_the_pages_that_wrote_nothing_back_now_write_every_fact_back():
     """
-    expected = {
-        "8_Retirement.py": 0,
-        "11_Separation_and_Insurance.py": 0,
-        "22_This_Years_Taxes.py": 0,
-    }
-    for name, n_helpers in expected.items():
+    §4a named three pages that seeded page-local widgets from the plan and
+    wrote nothing back, so a member who corrected a figure there had corrected
+    nothing. That is fixed, and this pins what each page owns.
+
+    The set is exact in both directions on purpose. A field appearing here that
+    should not have is a what-if promoted into a stored fact -- the thing §14
+    forbids -- and a field disappearing is a fact going back to being thrown
+    away. Either is a deliberate decision that updates FUNNEL_CONTRACT.md §14
+    alongside this test.
+    """
+    for name, expected in WRITES_BACK.items():
         page = ROOT / "pages" / name
         assert page.exists(), name
-        assert len(_page_bindings(page)) == n_helpers, (
-            f"{name} now writes back — good. Update FUNNEL_CONTRACT.md §14 "
-            f"and this test.")
+        assert set(_page_bindings(page)) == expected, (
+            f"{name} writes back a different set than §14 records. Update "
+            f"FUNNEL_CONTRACT.md §14 and this test, deliberately.")
 
     # And the contract says so, so the two cannot drift apart.
     contract = (ROOT / "docs" / "FUNNEL_CONTRACT.md").read_text(encoding="utf-8")
-    for name in expected:
+    for name in WRITES_BACK:
         assert name in contract, f"§14 does not record {name}"
+
+
+def test_no_fourth_page_seeds_a_widget_from_the_plan_and_throws_it_away():
+    """
+    The other half of the old recorded-gap test: the gap must not reopen
+    somewhere else. Every page that reads the Household into a raw `st.*`
+    widget has to either write it back through a `ui.panel` helper or say on
+    screen that it is a what-if, and §14's phrase is how it says so.
+
+    This is deliberately narrow -- it checks the three pages the round-three
+    work covered, plus the one page that already carried a labelled what-if --
+    because a whole-tree sweep would be a different piece of work and is
+    recorded as such.
+    """
+    for name in list(WRITES_BACK) + ["9_Survivor_and_VA.py"]:
+        src = source(name)
+        assert WHATIF_PHRASE in src, (
+            f"{name} has no labelled what-if; if every input on it now writes "
+            f"back, say so in §14 and here")
 
 
 def test_a_shared_field_is_asked_the_same_question_in_both_homes():
