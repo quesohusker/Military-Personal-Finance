@@ -2,9 +2,10 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import streamlit as st
+from streamlit.errors import StreamlitAPIException
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
-                      section, metric_row, money, integer, toggle, fmt_money,
+                      section, metric_row, fmt_money,
                       fmt_pct, esc, md_money, render_findings)
 from engine import mortality as MORT
 from engine.benefits import sbp as SBP
@@ -21,6 +22,26 @@ def _survivor_sex(member) -> str:
             MORT.SEX_FEMALE: MORT.SEX_MALE}.get(member.sex, MORT.SEX_UNSPECIFIED)
 
 
+INTAKE_PAGE = "pages/01_Intake.py"
+
+
+def _from_intake(*facts) -> None:
+    """
+    Show a fact this page reads but does not own, and say where to change it.
+
+    ARCHITECTURE.md R3: one home per fact, read everywhere else. Retired pay,
+    the SBP election and the VA rating were all asked here AND on Profile AND
+    in intake, and three widgets on one field is how a member corrects a figure
+    and finds it unchanged. Intake is the home; this page reads.
+    """
+    for label, value in facts:
+        st.markdown(f"**{esc(label)}** — {value}")
+    try:
+        st.page_link(INTAKE_PAGE, label="Change these on Intake", icon="📝")
+    except StreamlitAPIException:
+        st.caption("📝 Change these on Intake.")
+
+
 h = get_household()
 m = h.member
 page_header("🛡️ Survivor Benefits",
@@ -34,12 +55,16 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("Your SBP election"):
-        toggle("Have you elected SBP?", m, "sbp_elected", key=wkey("sbpel"))
-        money("What is your retired pay, per month?", m, "retired_pay_monthly",
-              key=wkey("rp"), step=100.0)
+        _from_intake(
+            ("Retired pay", f"{md_money(m.retired_pay_monthly)} a month"),
+            ("SBP elected", "Yes" if m.sbp_elected else "No"))
         base = st.number_input("What base amount did you elect? (0 = full)",
                                value=0.0, min_value=0.0, step=100.0,
-                               format="%.2f", key=wkey("sbpbase"))
+                               format="%.2f", key=wkey("sbpbase"),
+                               help="A what-if on this page only. The plan "
+                                    "carries no base-amount field, so nothing "
+                                    "typed here is saved — it moves the "
+                                    "figures below and nothing else.")
 
     with input_card("How long will you both live?"):
         ret_age = st.number_input("How old are you when you retire?", value=int(max(38, m.age())),
@@ -78,8 +103,7 @@ with inputs:
                              "service-connected cause.")
 
     with input_card("Your VA rating"):
-        integer("What is your VA rating? (%)", m, "va_rating", key=wkey("var2"), max_value=100,
-                step=10)
+        _from_intake(("VA rating", f"{m.va_rating}%"))
         combat = st.toggle("Are any disabilities combat-related?", value=False,
                            key=wkey("combatrel"),
                            help="Armed conflict, hazardous service, an "

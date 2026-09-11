@@ -22,7 +22,7 @@ def retiree(**member) -> Household:
     """A retiree household, prepared, with a spouse record to write into."""
     member.setdefault("component", RETIRED)
     h = Household(member=ServiceMember(**member), has_spouse=True)
-    prepare(h)
+    intake.prepare(h)          # the page's prepare: it sees R.DERIVED too
     return h
 
 
@@ -147,8 +147,15 @@ def test_widget_kwargs_splat_cleanly_for_every_question():
 # What is asked
 # ==========================================================================
 
-def test_it_asks_the_architecture_section_5_retired_only_fields():
+def test_it_carries_the_architecture_section_5_retired_only_fields():
+    """
+    Every §5 retiree field is still on the plan. R1 changed how two of them get
+    there: CRDP is worked out (it is automatic at twenty years and a 50%
+    rating, so there is nothing to elect) and Part B is assumed and offered
+    back on the review card.
+    """
     asked = {(q.path, q.attr) for q in R.QUESTIONS}
+    derived = {(d.path, d.attr) for d in R.DERIVED}
     for path, attr in (("member", "retired_pay_monthly"),
                        ("member", "diems_date"),          # = retirement system
                        ("member", "years_of_service"),
@@ -160,7 +167,8 @@ def test_it_asks_the_architecture_section_5_retired_only_fields():
                        ("member", "crsc_monthly"),
                        ("healthcare", "tricare_plan"),
                        ("healthcare", "part_b_when_eligible")):
-        assert (path, attr) in asked, f"{path}.{attr} is not asked"
+        assert (path, attr) in (asked | derived), \
+            f"{path}.{attr} is neither asked nor worked out"
 
 
 def test_the_tricare_menu_is_the_one_a_retiree_can_actually_hold():
@@ -212,16 +220,24 @@ def test_the_va_follow_ups_wait_for_a_rating():
     assert "ret_crsc" in on
 
 
-def test_crdp_is_asked_only_when_both_statutory_conditions_are_met():
+def test_crdp_is_worked_out_from_the_two_statutory_conditions_and_never_asked():
+    """
+    R1. `concurrent_receipt.eligibility()` says CRDP is "automatic — no
+    application is required", so a toggle asking whether it applies was asking
+    the member to confirm the app's own arithmetic. Both conditions are
+    already on the plan; the app sets the flag and page 9 explains it.
+    """
+    assert not any(q.attr == "crdp_applies" for q in R.QUESTIONS)
+
     both = retiree(va_rating=CR.CRDP_MIN_RATING, years_of_service=CR.CRDP_MIN_YEARS)
-    assert "ret_crdp" in keys_on_screen(both)
+    assert both.member.crdp_applies is True
 
     short = retiree(va_rating=100, years_of_service=CR.CRDP_MIN_YEARS - 8)
-    assert "ret_crdp" not in keys_on_screen(short)
+    assert short.member.crdp_applies is False
     assert "ret_crsc" in keys_on_screen(short)      # no length-of-service floor
 
     low = retiree(va_rating=CR.CRDP_MIN_RATING - 10, years_of_service=26)
-    assert "ret_crdp" not in keys_on_screen(low)
+    assert low.member.crdp_applies is False
 
 
 def test_the_owners_own_case_gets_every_question():
@@ -231,7 +247,12 @@ def test_the_owners_own_case_gets_every_question():
     h = retiree(diems_date="1998-06-15", years_of_service=26.0, va_rating=100,
                 retired_pay_monthly=6_200.0, va_disability_monthly=4_000.0,
                 tsp_traditional_balance=1_100_000.0)
-    assert set(keys_on_screen(h)) == {q.key for q in R.QUESTIONS}
+    on_screen = set(keys_on_screen(h))
+    reviewed = {q.key for q in intake.figures_to_check(h)}
+    # He is 31 on a blank birth year, so the Prime-or-Select question still
+    # applies; nothing else in the set is conditional on anything he lacks.
+    assert on_screen | reviewed >= {q.key for q in R.QUESTIONS}
+    assert not (on_screen & reviewed), "a question is asked or derived, never both"
 
 
 # ==========================================================================

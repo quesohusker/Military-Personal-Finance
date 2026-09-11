@@ -28,7 +28,7 @@ def serving_household(**member) -> Household:
     """A household in the serving funnel, prepared as the page would."""
     h = Household(member=ServiceMember(**member))
     set_funnel(h, FUNNEL_SERVING)
-    prepare(h)
+    intake.prepare(h)          # the page's prepare: it sees serving.DERIVED too
     return h
 
 
@@ -187,9 +187,13 @@ def test_the_serving_cards_render_in_the_order_the_module_declares():
     titles = [t for t, qs in grouped(intake.questions_to_ask(h))
               if any(x.key.startswith("srv_") for x in qs)]
     assert titles == [serving.GROUP_SERVICE, serving.GROUP_STATION,
-                      serving.GROUP_TSP, serving.GROUP_DEPLOYMENT,
-                      serving.GROUP_INSURANCE, serving.GROUP_GI_BILL,
-                      serving.GROUP_SEPARATION]
+                      serving.GROUP_SPECIAL, serving.GROUP_TSP,
+                      serving.GROUP_DEPLOYMENT, serving.GROUP_SEPARATION]
+
+    # The review card is last of all, and it is not one of this module's
+    # story cards -- it is where everything the app worked out lands.
+    review = [t for t, _ in grouped(intake.all_questions(FUNNEL_SERVING))]
+    assert review[-1] == intake.GROUP_REVIEW
 
 
 def test_renaming_a_serving_card_does_not_reorder_the_page():
@@ -225,8 +229,27 @@ def test_renaming_a_serving_card_does_not_reorder_the_page():
     ("member", "planned_separation_date"),
 ])
 def test_the_architecture_serving_row_is_covered(path, attr):
-    assert any(x.path == path and x.attr == attr for x in SRV), \
-        f"{path}.{attr} is in ARCHITECTURE.md §5 and is not asked"
+    """
+    Every field ARCHITECTURE.md §5 lists is still ON THE PLAN — but R1 changed
+    HOW it gets there. Three of them are no longer asked: the app works them
+    out, and the funnel covers the field through a `Derived` or through a
+    derived question on the review card instead of through a blank field.
+    """
+    covered = ([(x.path, x.attr) for x in SRV]
+               + [(d.path, d.attr) for d in serving.DERIVED])
+    assert (path, attr) in covered, \
+        f"{path}.{attr} is in ARCHITECTURE.md §5 and the funnel does not carry it"
+
+
+@pytest.mark.parametrize("attr,key", [
+    ("has_dependents", "srv_d_has_dependents"),
+])
+def test_the_settled_facts_are_worked_out_rather_than_asked(attr, key):
+    """R1: no widget anywhere for a fact with no second opinion to have."""
+    assert not any(x.attr == attr for x in SRV), \
+        f"{attr} is derivable and is still being asked"
+    d = next(d for d in serving.DERIVED if d.key == key)
+    assert d.attr == attr and d.because
 
 
 def test_nothing_the_common_set_already_asks_is_asked_again():
@@ -270,16 +293,26 @@ def test_csb_redux_is_asked_only_inside_the_window_it_could_be_elected_in():
     assert not q("srv_csb_redux").applies(serving_household(diems_date="2019-09-01"))
 
 
-def test_time_in_grade_is_asked_only_when_there_is_no_date_of_rank():
-    assert q("srv_time_in_grade").applies(serving_household(date_of_rank=""))
-    assert not q("srv_time_in_grade").applies(
-        serving_household(date_of_rank="2023-06-01"))
-    # A DOR that does not parse is no DOR at all, so the fallback comes back.
-    assert q("srv_time_in_grade").applies(serving_household(date_of_rank="June 2023"))
+def test_time_in_grade_is_not_asked_at_all_any_more():
+    """
+    R1. `time_in_grade_years` was the fallback for a missing Date of Rank, and
+    `ServiceMember.time_in_grade()` already falls back to it on its own — so
+    asking for it was asking the user to type the app's own default. The Date
+    of Rank is the only field left, it is on the review card, and blank means
+    the assumed two years.
+    """
+    assert not any(x.attr == "time_in_grade_years" for x in SRV)
+    dor = q("srv_dor")
+    assert dor.is_derived and not dor.fills_in
+    h = serving_household(date_of_rank="")
+    assert h.member.time_in_grade() == serving.ASSUMED_TIME_IN_GRADE
+    # The review card shows the date that assumption implies, and writes
+    # nothing: a made-up Date of Rank must not end up on the plan.
+    assert dor.derived_value(h)
+    assert h.member.date_of_rank == ""
 
 
-@pytest.mark.parametrize("key", ["srv_deployed_months", "srv_combat_zone",
-                                 "srv_hostile_fire"])
+@pytest.mark.parametrize("key", ["srv_deployed_months", "srv_combat_zone"])
 def test_the_deployment_detail_is_asked_only_of_someone_deployed(key):
     assert q(key).applies(serving_household(is_deployed=True))
     assert not q(key).applies(serving_household(is_deployed=False))
@@ -300,20 +333,20 @@ def test_an_sdp_balance_stays_on_screen_after_the_deployment_ends():
                           sdp_balance=9_500.0))
 
 
-def test_the_gi_bill_question_waits_for_the_six_year_transfer_mark():
-    below = GI.TRANSFER_SERVICE_REQUIRED - 1
-    assert not q("srv_gi_bill_children").applies(
-        serving_household(years_of_service=float(below)))
-    assert q("srv_gi_bill_children").applies(
-        serving_household(years_of_service=float(GI.TRANSFER_SERVICE_REQUIRED)))
-    assert q("srv_gi_bill_children").applies(
-        serving_household(years_of_service=14.0))
-
-
-def test_the_gi_bill_help_states_what_the_transfer_costs():
-    help_text = q("srv_gi_bill_children").help.lower()
-    assert "four more" in help_text            # the obligation, not a gift
-    assert "still" in help_text and "serving" in help_text
+def test_the_child_count_is_not_asked_here_and_not_invented_either():
+    """
+    R3: `estate.n_children` has one home, the Estate page, and this module is
+    not a second one. It is not derived from `n_dependents` either — that
+    count includes a spouse and is a pay concept, and the Estate page asks the
+    real question in its own words. The GI Bill page reads whatever is there.
+    """
+    assert GI.TRANSFER_SERVICE_REQUIRED == 6          # the mark still exists
+    assert not any(x.attr == "n_children" for x in SRV)
+    assert not any(d.attr == "n_children" for d in serving.DERIVED)
+    h = serving_household(years_of_service=14.0)
+    h.n_dependents = 2
+    prepare(h)
+    assert h.estate.n_children == 0
 
 
 def test_every_predicate_is_a_named_function_so_a_failure_names_something():
@@ -364,4 +397,12 @@ def test_a_serving_plan_can_be_answered_end_to_end_without_a_none_target():
                           drawing_hostile_fire_pay=True, years_of_service=12.0)
     asked = intake.questions_to_ask(h)
     assert all(x.target(h) is not None for x in asked)
-    assert {x.key for x in SRV if x.when is None} <= {x.key for x in asked}
+    assert {x.key for x in SRV
+            if x.when is None and not x.is_derived} <= {x.key for x in asked}
+
+    # And every figure the app worked out has a target too, or the review card
+    # would drop it silently.
+    figures = intake.figures_to_check(h)
+    assert all(x.target(h) is not None for x in figures)
+    assert {x.key for x in SRV
+            if x.when is None and x.is_derived} <= {x.key for x in figures}

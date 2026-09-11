@@ -3,14 +3,34 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 import pandas as pd
+from streamlit.errors import StreamlitAPIException
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
-                      section, metric_row, money, pct, integer, toggle,
-                      fmt_money, fmt_pct, esc, md_money)
+                      section, metric_row, fmt_money, fmt_pct, esc, md_money)
 from engine.retirement import tsp as T
 from engine.tax import military as M
 from engine.pay import grades as G, bah as BAH, bas as BAS, basepay as BP
 from engine.profile import SYS_BRS, has_tsp_match
+
+INTAKE_PAGE = "pages/01_Intake.py"
+
+
+def _from_intake(*facts) -> None:
+    """
+    Show a fact this page reads but does not own, and say where to change it.
+
+    ARCHITECTURE.md R3: one home per fact, read everywhere else. The TSP
+    election and all four deployment fields were asked here AND on Profile AND
+    in intake -- three widgets on one field, and a member who corrected one of
+    them had no way of knowing which copy the next page would read.
+    """
+    for label, value in facts:
+        st.markdown(f"**{esc(label)}** — {value}")
+    try:
+        st.page_link(INTAKE_PAGE, label="Change these on Intake", icon="📝")
+    except StreamlitAPIException:
+        st.caption("📝 Change these on Intake.")
+
 
 h = get_household()
 m = h.member
@@ -46,14 +66,14 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("What you put into the TSP"):
-        pct("How much do you contribute? (% of basic pay)", m, "tsp_contribution_pct",
-            key=wkey("tsppct"), step=1.0, max_value=92.0,
-            help="TSP elections are a percentage of BASIC PAY — not of your total "
-                 "compensation, and not of BAH or BAS.")
-        pct("What share goes to Roth?", m, "tsp_roth_share", key=wkey("rothshare"),
-            step=5.0, max_value=100.0)
+        _from_intake(
+            ("You contribute",
+             f"{fmt_pct(m.tsp_contribution_pct)} of basic pay"),
+            ("To Roth", f"{fmt_pct(m.tsp_roth_share)} of that"))
 
-    with input_card("Traditional or Roth?"):
+    with input_card("Traditional or Roth? — a what-if"):
+        st.caption("Two brackets to try against each other. Nothing here is "
+                   "saved to your plan.")
         marginal = st.select_slider("What is your federal tax bracket now?",
                                     options=[0.10, 0.12, 0.22, 0.24, 0.32, 0.35, 0.37],
                                     value=0.12, format_func=lambda v: f"{v*100:.0f}%",
@@ -64,15 +84,15 @@ with inputs:
                                     key=wkey("expmarg"))
 
     with input_card("Are you deployed?"):
-        toggle("Are you in a combat zone?", m, "in_combat_zone", key=wkey("cz2"))
-        integer("How many qualifying months in the zone?", m, "months_deployed_this_year",
-                key=wkey("czmo"), max_value=12,
-                help="Any part of a month in the zone counts as a whole month. A "
-                     "deployment from 1 January to 1 July is SEVEN qualifying "
-                     "months, not six.")
-        toggle("Drawing hostile fire or imminent danger pay?", m,
-               "drawing_hostile_fire_pay", key=wkey("hfp2"))
-        money("What is your SDP balance?", m, "sdp_balance", key=wkey("sdp2"), step=500.0)
+        _from_intake(
+            ("Deployed", "Yes" if m.is_deployed else "No"),
+            ("In a designated combat zone",
+             "Yes" if m.in_combat_zone else "No"),
+            ("Qualifying months this year",
+             f"{int(m.months_deployed_this_year)}"),
+            ("Hostile fire or imminent danger pay",
+             "Yes" if m.drawing_hostile_fire_pay else "No"),
+            ("SDP balance", md_money(m.sdp_balance)))
 
 # ==========================================================================
 # The arithmetic, once every answer is in.

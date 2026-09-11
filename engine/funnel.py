@@ -29,7 +29,8 @@ added here; tolerating a missing key is the whole mechanism.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import MISSING, dataclass, fields as dataclass_fields
+from datetime import date
 from typing import Callable, Iterable, Sequence
 
 from engine import mortality as MORT
@@ -298,15 +299,27 @@ def ensure_spouse(h: Household) -> ServiceMember | None:
     return h.spouse
 
 
-def prepare(h: Household) -> Household:
+def prepare(h: Household, pool: Sequence["Question"] | None = None,
+            derived: Sequence["Derived"] | None = None) -> Household:
     """
     Normalise a household before a render pass, once, at the top of the page.
 
-    Only one thing so far: a married household gets a spouse record, so the
-    spouse questions have a target and `applies()` can stay a pure predicate.
-    Call it before evaluating any `Question.applies`.
+    Two things:
+
+      * a married household gets a spouse record, so the spouse questions have
+        a target and `applies()` can stay a pure predicate;
+      * every fact the app can work out is filled in, so no page and no engine
+        sees a blank where a derivation exists (ARCHITECTURE.md R1).
+
+    `pool` and `derived` default to the COMMON sets only, because this module
+    cannot see the funnel-specific ones without an import cycle.
+    **`engine.intake.prepare()` passes the assembled sets and is the one every
+    page should call.** Call it before evaluating any `Question.applies`.
     """
     ensure_spouse(h)
+    apply_derivations(h,
+                      QUESTIONS if pool is None else pool,
+                      DERIVED if derived is None else derived)
     return h
 
 
@@ -423,6 +436,29 @@ class Question:
     order: int = 0                          # within the group
     when: Callable[[Household], bool] | None = None
 
+    # -- The override mechanism (ARCHITECTURE.md R1) ----------------------
+    # A question carrying `derive` IS NOT ASKED IN THE MAIN FLOW. The app
+    # works the answer out and the question becomes a correction: it renders
+    # in the review card at the end of intake, seeded with the derived figure
+    # and captioned with `derived_from`, rather than as a blank field in the
+    # primary run. R1: "the question is never 'what is your basic pay?' -- it
+    # is an override, asked only when the member wants to correct what the
+    # table produced, and it should not be in the main flow at all."
+    #
+    #   derive        pure function of the Household -> the worked-out value.
+    #   derived_from  one line, shown to the user: what it was worked out from.
+    #   fills_in      True  -- write the value into the plan, because the rest
+    #                          of the app reads the raw field and would
+    #                          otherwise see a blank.
+    #                 False -- leave the field as a pure OVERRIDE SLOT, because
+    #                          the engine already falls back on its own.
+    #                          `taxable.resolve_basic_monthly()` and every
+    #                          `*_monthly_override` field work this way: blank
+    #                          means "use what the app worked out".
+    derive: Callable[[Household], object] | None = None
+    derived_from: str = ""
+    fills_in: bool = False
+
     # Widget extras. Only the ones listed in _EXTRAS for this kind are passed.
     options: tuple = ()
     step: float | None = None
@@ -434,6 +470,22 @@ class Question:
     format_func: Callable[[object], str] | None = None   # choice only
 
     # ------------------------------------------------------------------
+    @property
+    def is_derived(self) -> bool:
+        """True when the app works this out and only offers a correction."""
+        return self.derive is not None
+
+    def derived_value(self, h: Household):
+        """
+        What the app works this answer out to be, or None when it cannot.
+
+        `derive` is a pure function of the Household, like `when`. It may
+        legitimately return None -- a BAH lookup with no duty ZIP and no
+        installed rate table has nothing to say -- and the review card then
+        renders the stored value with no claim about where it came from.
+        """
+        return None if self.derive is None else self.derive(h)
+
     def asks(self, funnel: str) -> bool:
         """Is this question part of `funnel`'s set at all?"""
         return funnel in self.funnels
@@ -506,6 +558,168 @@ def is_deployed(h: Household) -> bool:
     return bool(h.member.is_deployed)
 
 
+def not_on_active_duty(h: Household) -> bool:
+    """
+    True for anyone who can hold a civilian job: out, or Guard or Reserve.
+
+    Active duty is the one component where civilian wages are not a thing, so
+    it is the one component that is not asked about them.
+    """
+    return h.member.component != ACTIVE
+
+
+# --------------------------------------------------------------------------
+# Facts the app works out, so that nobody is asked for them
+# --------------------------------------------------------------------------
+# ARCHITECTURE.md R1: "A question earns its place only if the answer CANNOT be
+# derived. The test is not 'is this useful?' -- it is 'can the app work it
+# out?'" There are two shapes of answer to that, and they are different
+# objects here because they behave differently:
+#
+#   Question(derive=...)   A CORRECTABLE figure. Not asked in the main flow;
+#                          it renders in the review card at the end of intake,
+#                          seeded with what the app worked out. The user may
+#                          overrule it and their answer stands for good.
+#
+#   Derived(...)           A SETTLED fact. No widget anywhere, because there is
+#                          no second opinion to have: CRDP is automatic at
+#                          twenty years and a 50% rating, a married member
+#                          draws BAH at the with-dependents rate. The app
+#                          writes it into the plan and the thirty-odd status
+#                          gates (§4a) read it exactly as before.
+#
+# WHY A SETTLED FACT HAS NO WIDGET, stated once. A derivation may only
+# overwrite a field that is still at its DECLARED DATACLASS DEFAULT, so a
+# typed answer is never stomped. For a boolean whose derivation says True, the
+# contrary answer IS the default -- there is no way to hold "no, really,
+# False" that the next render pass would not undo. Rather than ship a toggle
+# that silently flips back, a fact like that is either settled (no widget) or
+# it stays a question. Nothing in between.
+
+def _declared_default(obj, attr: str):
+    """
+    The value this attribute has on a freshly built object, or a sentinel.
+
+    Read off the dataclass field rather than off a fresh instance, so a
+    default_factory (Household.member, .estate) is never invoked.
+    """
+    for f in dataclass_fields(type(obj)):
+        if f.name != attr:
+            continue
+        if f.default is not MISSING:
+            return f.default
+        return _NO_DEFAULT
+    return _NO_DEFAULT
+
+
+class _NoDefault:
+    """Sentinel: this attribute has no scalar default to compare against."""
+
+
+_NO_DEFAULT = _NoDefault()
+
+
+def is_untouched(obj, attr: str) -> bool:
+    """
+    Is this field still the value a blank plan starts with?
+
+    The Household carries no "unset" marker for a scalar, so this is the only
+    test available and `pages/01_Intake.py::_answered` already owns up to the
+    same crudeness. It decides one thing and one thing only: whether a
+    derivation may write here. An answer that happens to equal the default is
+    indistinguishable from an untouched one and will be re-derived; the review
+    card shows the figure and where it came from, so that is visible rather
+    than silent.
+    """
+    default = _declared_default(obj, attr)
+    if isinstance(default, _NoDefault):
+        return False
+    return getattr(obj, attr, None) == default
+
+
+@dataclass(frozen=True)
+class Derived:
+    """
+    One fact the app works out and writes into the plan. Never a widget.
+
+    `compute` is a pure function of the Household, like `when`. Returning None
+    means "not enough on the plan to say", and nothing is written.
+    """
+    key: str
+    label: str                              # a noun phrase; this is not a question
+    attr: str
+    compute: Callable[[Household], object]
+    because: str                            # one line: why the app can say this
+    path: str = ""
+    funnels: tuple[str, ...] = FUNNELS
+    when: Callable[[Household], bool] | None = None
+
+    def asks(self, funnel: str) -> bool:
+        return funnel in self.funnels
+
+    def applies(self, h: Household) -> bool:
+        if not self.asks(funnel_of(h)):
+            return False
+        return True if self.when is None else bool(self.when(h))
+
+    def target(self, h: Household):
+        obj = h
+        if not self.path:
+            return obj
+        for part in self.path.split("."):
+            obj = getattr(obj, part, None)
+            if obj is None:
+                return None
+        return obj
+
+    def value(self, h: Household):
+        return self.compute(h)
+
+
+def _fill_one(h: Household, path: str, attr: str, value) -> bool:
+    """Write a derived value where the field is untouched. True if written."""
+    obj = h
+    for part in (path.split(".") if path else []):
+        obj = getattr(obj, part, None)
+        if obj is None:
+            return False
+    if value is None or not hasattr(obj, attr):
+        return False
+    if not is_untouched(obj, attr):
+        return False
+    current = getattr(obj, attr)
+    if current == value:
+        return False
+    setattr(obj, attr, value)
+    return True
+
+
+def apply_derivations(h: Household,
+                      pool: Sequence["Question"] = (),
+                      derived: Sequence["Derived"] = ()) -> list[str]:
+    """
+    Fill in everything this household's funnel can work out. Returns the keys.
+
+    Called by `prepare()`, so every page that prepares a household sees a plan
+    with the derivations in place rather than a blank. It writes DIRECTLY --
+    no `mark_dirty()`, no `invalidate()` -- because working out a figure the
+    user never typed is not an edit the user made, and the engine layer holds
+    no Streamlit state anyway. Idempotent: running it twice writes once.
+    """
+    written: list[str] = []
+    for q in pool:
+        if not (q.is_derived and q.fills_in and q.applies(h)):
+            continue
+        if _fill_one(h, q.path, q.attr, q.derived_value(h)):
+            written.append(q.key)
+    for d in derived:
+        if not d.applies(h):
+            continue
+        if _fill_one(h, d.path, d.attr, d.value(h)):
+            written.append(d.key)
+    return written
+
+
 # --------------------------------------------------------------------------
 # The common set
 # --------------------------------------------------------------------------
@@ -517,14 +731,81 @@ def is_deployed(h: Household) -> bool:
 GROUP_ABOUT = "About you"
 GROUP_HOUSEHOLD = "Your household"
 GROUP_WHERE = "Where you live"
+GROUP_EARN = "What you earn"
 GROUP_BALANCES = "What you have saved"
 GROUP_SPENDING = "What you spend"
 GROUP_PLAN = "When you stop working"
 
+#: The one card every derived figure sits on, in every funnel: the review step
+#: at the end of intake. It is NOT in GROUP_ORDER -- the page renders it after
+#: everything else, on its own, because it is a different kind of act. Every
+#: funnel module puts its corrections here and repeats RANK_REVIEW.
+GROUP_REVIEW = "The figures we worked out"
+RANK_REVIEW = 900
+
 #: The order the common groups are shown in. A funnel module may reuse these
 #: names to add to an existing card, or introduce its own.
 GROUP_ORDER: tuple[str, ...] = (GROUP_ABOUT, GROUP_HOUSEHOLD, GROUP_WHERE,
-                                GROUP_BALANCES, GROUP_SPENDING, GROUP_PLAN)
+                                GROUP_EARN, GROUP_BALANCES, GROUP_SPENDING,
+                                GROUP_PLAN)
+
+
+# --------------------------------------------------------------------------
+# The derivations the common set runs on
+# --------------------------------------------------------------------------
+
+_ZIP_STATES: dict[str, str] = {}
+
+
+def state_of_duty_zip(zipcode: str) -> str:
+    """
+    The state a duty ZIP is in, as a full name the tax tables recognise.
+
+    Read off the BAH archive, which maps 40,000-odd ZIPs to a Military Housing
+    Area whose name ends in a postal abbreviation -- "FAYETTEVILLE/FORT BRAGG,
+    NC". No second table to keep in step, and it is the same file the BAH rate
+    itself comes out of. Blank when there is no ZIP, no installed archive, or
+    an overseas MHA with no state.
+    """
+    z = (zipcode or "").strip()[:5]
+    if not z.isdigit() or len(z) != 5:
+        return ""
+    if not _ZIP_STATES:
+        from engine.pay import bah as BAH              # local: keeps import cheap
+        from engine.retirement.roth_bridge import STATE_ABBREVIATIONS
+        data = BAH.load()
+        if data is None:
+            return ""
+        for zc, mha in data.zip_to_mha.items():
+            name = data.mha_names.get(mha, "")
+            abbr = name.rsplit(",", 1)[-1].strip().upper() if "," in name else ""
+            state = STATE_ABBREVIATIONS.get(abbr, "")
+            if state:
+                _ZIP_STATES[zc] = state
+    return _ZIP_STATES.get(z, "")
+
+
+def derive_current_state(h: Household) -> str:
+    """
+    Where you live now: your duty station's state, or your legal residence.
+
+    Serving, the duty ZIP says it outright and the app already holds the ZIP
+    to price BAH. Out of uniform there is no duty station and SCRA no longer
+    applies, so where you live and where you are domiciled are the same place
+    until you say otherwise.
+
+    KNOWN LIMIT. A Military Housing Area can straddle a state line -- the
+    Washington DC area covers DC, Maryland and Virginia -- and its NAME carries
+    only one abbreviation, so a ZIP on the far side of the line resolves to the
+    wrong state. That is worth knowing rather than worth refusing to derive:
+    the field it replaces held a stale "Texas" for everybody, so the derivation
+    is better than the alternative for anyone not in Texas, and it is offered
+    back on the review card with the caveat in its help text. A ZIP-to-state
+    table would settle it outright and there is not one in this tree.
+    """
+    if h.member.component in SERVING:
+        return state_of_duty_zip(h.member.duty_zip) or h.state_of_legal_residence
+    return h.state_of_legal_residence
 
 QUESTIONS: tuple[Question, ...] = (
     # -- About you ---------------------------------------------------------
@@ -567,9 +848,49 @@ QUESTIONS: tuple[Question, ...] = (
              help="Where you pay income tax. Under SCRA you do not acquire a "
                   "new domicile just by being stationed somewhere, and several "
                   "states do not tax military retired pay at all."),
+    # DERIVED, not asked. Serving, the duty ZIP already on the plan names the
+    # state; out of uniform there is no duty station and no SCRA, so it is the
+    # legal residence. Kept as a correction because the two come apart --
+    # a Guard member who drills in one state and lives in another, a retiree
+    # who has moved and not yet changed domicile.
     Question(key="q_current_state", label="Which state do you live in now?",
              kind=KIND_TEXT, attr="current_state",
-             group=GROUP_WHERE, order=20, placeholder="Texas"),
+             group=GROUP_REVIEW, group_rank=RANK_REVIEW, order=10,
+             placeholder="Texas",
+             derive=derive_current_state, fills_in=True,
+             derived_from="your duty station ZIP code, or your legal residence "
+                          "once you are out of uniform",
+             help="Where you actually live, which is not necessarily where you "
+                  "pay tax — under SCRA you keep your domicile wherever you "
+                  "are stationed. Worth checking rather than skipping: it "
+                  "decides which state's disabled-veteran property tax "
+                  "exemption the Housing page quotes you, and whether the "
+                  "spouse-residency election on Taxes is worth making. The app "
+                  "reads it off the housing area your duty ZIP sits in, and a "
+                  "housing area can straddle a state line — so if you are near "
+                  "one, check this."),
+
+    # -- What you earn -----------------------------------------------------
+    # THE ONE HOME FOR CIVILIAN WAGES (R3). Profile asked it and the Social
+    # Security page asked it again, and the two meant different things: Profile
+    # means what you earn NOW -- which is what `tsp.plan_contributions` and
+    # `roth_bridge` read it as -- while Social Security was asking what you
+    # will earn AFTER you take the uniform off. One field, two facts. It is
+    # asked here, once, as current wages; Social Security's version is now a
+    # page-local what-if and says so.
+    #
+    # Not asked on active duty, and only there: a Guard or Reserve member's
+    # civilian job is usually their main income, and a veteran's or retiree's
+    # second career is the difference between a plan that works and one that
+    # does not.
+    Question(key="q_civilian_wages",
+             label="What do you earn in a civilian job, per year?",
+             kind=KIND_MONEY, path="member", attr="civilian_wages_annual",
+             group=GROUP_EARN, order=10, step=1_000.0, when=not_on_active_duty,
+             help="Gross wages before tax and before anything you divert into "
+                  "a retirement plan. Your service years and your civilian "
+                  "years are one earnings record as far as Social Security is "
+                  "concerned. Leave it at zero if you are not working."),
 
     # -- What you have saved ----------------------------------------------
     Question(key="q_tsp_trad",
@@ -629,6 +950,37 @@ QUESTIONS: tuple[Question, ...] = (
                   "you have not picked one."),
 )
 
+# WHY `estate.n_children` IS NOT DERIVED FROM `n_dependents`, and must not be.
+#
+# It was, briefly, on the reasoning that `engine/tax/current_year.py` already
+# reads `est.n_children = h.n_dependents`. That reading is a fallback INSIDE a
+# page that offers its own override widget (`pages/22_This_Years_Taxes.py`),
+# and it is not a licence to write the value permanently into the plan.
+#
+# Two things break when it is:
+#
+#   1. `n_dependents` INCLUDES A SPOUSE. It is the military pay and tax sense
+#      of the word -- it is what BAH's with-dependants rate turns on, and
+#      intake asks it two lines below "Are you married?". A married member with
+#      no children answers 1.
+#   2. `engine/scorecard/components.py::legacy()` is scored ONLY when the user
+#      says a legacy is a goal (ARCHITECTURE.md §3), and `n_children > 0` is
+#      one of the three things that counts as saying so. Deriving the count
+#      turned that component from NOT_APPLICABLE to a rated C-4 for every
+#      married member with dependants -- a goal they never stated, scored
+#      against a count that includes their spouse. The component's own detail
+#      text says "Nothing is assumed from the number of dependants you claim
+#      for pay", which the derivation made into a falsehood on screen.
+#
+# `estate.n_children` has two homes already -- the Estate page and the serving
+# funnel's GI Bill question -- and both ask for it in its own words. R1 asks
+# for the minimum number of questions, not for a derivation that answers a
+# different question from the one the field holds.
+
+#: Settled facts every funnel derives. None, in the common set: every fact the
+#: common questions cover is either asked or genuinely funnel-specific.
+DERIVED: tuple[Derived, ...] = ()
+
 
 # --------------------------------------------------------------------------
 # Assembling a set
@@ -647,13 +999,39 @@ def questions_for(funnel: str,
 def visible_questions(h: Household,
                       pool: Iterable[Question] = QUESTIONS) -> tuple[Question, ...]:
     """
-    Every question to put on screen for this household, in render order.
+    Every question ASKED of this household, in render order. The main flow.
+
+    Derived questions are not in it -- the app works those out, and they come
+    back in `review_questions()` as corrections rather than as blanks.
 
     Call `prepare(h)` first: a married household needs its spouse record before
     the spouse questions can pass `applies()`.
     """
-    picked = [q for q in pool if q.applies(h) and q.target(h) is not None]
+    picked = [q for q in pool
+              if not q.is_derived and q.applies(h) and q.target(h) is not None]
     return tuple(sorted(picked, key=_sort_key))
+
+
+def review_questions(h: Household,
+                     pool: Iterable[Question] = QUESTIONS) -> tuple[Question, ...]:
+    """
+    The figures the app worked out and is offering to have corrected.
+
+    The other half of `visible_questions()`: same household, same gates, the
+    derived ones instead of the asked ones. They render in one card at the END
+    of intake, after everything that was actually asked, because correcting a
+    computed figure is a different act from answering a question.
+    """
+    picked = [q for q in pool
+              if q.is_derived and q.applies(h) and q.target(h) is not None]
+    return tuple(sorted(picked, key=_sort_key))
+
+
+def settled_facts(h: Household,
+                  derived: Iterable["Derived"] = ()) -> tuple["Derived", ...]:
+    """The facts the app worked out and does not offer a widget for."""
+    picked = [d for d in derived if d.applies(h) and d.target(h) is not None]
+    return tuple(picked)
 
 
 def grouped(questions: Iterable[Question]) -> tuple[tuple[str, tuple[Question, ...]], ...]:
@@ -712,7 +1090,8 @@ QUESTION_OPENERS: frozenset[str] = frozenset({
 
 
 def validate(pool: Sequence[Question] = QUESTIONS,
-             household: Household | None = None) -> list[str]:
+             household: Household | None = None,
+             derived: Sequence[Derived] = ()) -> list[str]:
     """
     Everything wrong with a question set, as plain sentences. Empty is good.
 
@@ -764,13 +1143,32 @@ def validate(pool: Sequence[Question] = QUESTIONS,
         # else. The renderer passes `help` straight through, so the escaping has
         # to happen here -- which means it has to not be needed. Write "50,000"
         # or spell it, or split the figures across two sentences.
-        for name in ("label", "help", "placeholder"):
+        for name in ("label", "help", "placeholder", "derived_from"):
             text = getattr(q, name) or ""
             if text.count("$") >= 2:
                 problems.append(
                     f"{q.key}: {name} contains two unescaped '$' — Streamlit "
                     f"will parse the text between them as LaTeX and silently "
                     f"eat both dollar signs. Rephrase so at most one appears.")
+
+        # A derived question is a CORRECTION, and a correction the user cannot
+        # trace is worse than a blank field (§8: "A number with no visible
+        # derivation is worse than no number"). So every one of them has to
+        # say what it was worked out from, and has to sit on the review card
+        # rather than in the middle of the main flow.
+        if q.is_derived:
+            if not q.derived_from.strip():
+                problems.append(
+                    f"{q.key}: derives its answer and does not say what from. "
+                    f"Set derived_from — the review card prints it.")
+            if q.group != GROUP_REVIEW:
+                problems.append(
+                    f"{q.key}: a derived question belongs on the "
+                    f"{GROUP_REVIEW!r} card, not {q.group!r} — R1 keeps it out "
+                    f"of the main flow.")
+        elif q.derived_from or q.fills_in:
+            problems.append(f"{q.key}: sets derived_from or fills_in with no "
+                            f"derive, so nothing works anything out.")
 
         obj = q.target(h)
         if obj is None:
@@ -798,4 +1196,39 @@ def validate(pool: Sequence[Question] = QUESTIONS,
                     f"Card {group!r} carries more than one group_rank "
                     f"({sorted(values)}) in the {funnel!r} funnel. Every "
                     f"question on a card must declare the same one.")
+
+    # The settled facts. They never render a widget, so the label and group
+    # rules do not apply to them -- but a key collision with a question is
+    # still a collision, and a field that is both asked and derived would have
+    # the derivation fighting the answer.
+    for d in derived:
+        if not d.key:
+            problems.append(f"{d.label!r} has no key.")
+        elif d.key in seen:
+            problems.append(f"Duplicate key {d.key!r} — a derived fact and a "
+                            f"question cannot share one.")
+        else:
+            seen[d.key] = d
+        if not d.because.strip():
+            problems.append(f"{d.key}: a derived fact must say why the app can "
+                            f"claim it. Set `because`.")
+        for f in d.funnels:
+            if f not in SPEC_BY_KEY:
+                problems.append(f"{d.key}: {f!r} is not a funnel.")
+        obj = d.target(h)
+        if obj is None:
+            problems.append(f"{d.key}: path {d.path!r} does not resolve.")
+        elif not hasattr(obj, d.attr):
+            problems.append(f"{d.key}: {type(obj).__name__} has no attribute "
+                            f"{d.attr!r}.")
+        for funnel in FUNNELS:
+            if not d.asks(funnel):
+                continue
+            clash = [q for q in pool
+                     if q.asks(funnel) and q.path == d.path and q.attr == d.attr]
+            for q in clash:
+                problems.append(
+                    f"{d.key} derives {d.path or 'h'}.{d.attr} and {q.key} asks "
+                    f"for it in the {funnel!r} funnel. A field is asked or "
+                    f"derived, never both.")
     return problems
