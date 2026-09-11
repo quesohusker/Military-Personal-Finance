@@ -330,6 +330,25 @@ class Household:
     # Cash position
     cash_savings: float = 0.0
     monthly_expenses: float = 0.0
+    # What could not be cut if the income stopped -- housing, food, utilities,
+    # insurance, healthcare, transport, minimum debt payments. 0.0 means the
+    # question has not been answered, NOT that nothing is essential, so read it
+    # through engine.funnel.essential_monthly(), which falls back to a share of
+    # monthly_expenses. The income-floor component of the scorecard compares
+    # guaranteed inflation-linked income against THIS, not against the total.
+    essential_monthly_expenses: float = 0.0
+
+    # The age the plan is built around. 0 means not chosen; the scorecard's job
+    # is to say whether a target holds, not to invent one.
+    target_retirement_age: int = 0
+
+    # Which of the three intake funnels this plan is in: one of
+    # engine.funnel.FUNNELS, or "" for never asked. Deliberately NOT a second
+    # status field -- engine.funnel.set_funnel() keeps member.component
+    # consistent with it, so the app's existing status gates keep working
+    # unchanged. Read it through engine.funnel.funnel_of(), which falls back to
+    # inference for a plan saved before the question existed.
+    funnel: str = ""
 
     # Balance sheet beyond retirement accounts
     taxable_brokerage: float = 0.0

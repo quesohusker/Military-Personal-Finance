@@ -3,9 +3,12 @@ Military Personal Finance — the router.
 
 Run with:  streamlit run Military_Finance.py
 
-The menu is organised by WHO A PAGE IS FOR. Most of personal finance does not
-care whether you are in uniform, so `General` holds the pages everyone uses and
-the three status groups hold only what is genuinely particular to that status.
+`Start` comes first and is the exception to everything below: it is the front
+door, and the one question on it sets the intake funnel (docs/ARCHITECTURE.md
+§5). The rest of the menu is organised by WHO A PAGE IS FOR. Most of personal
+finance does not care whether you are in uniform, so `General` holds the pages
+everyone uses and the three status groups hold only what is genuinely
+particular to that status.
 
 Titles are nouns. The title says the subject, the subtitle says the question —
 a sidebar of full sentences is slow to scan, and the eye should land rather
@@ -28,11 +31,20 @@ def _page(path, title, icon, default=False):
 
 
 MENU = {
+    # The front door, and the only sequenced part of the app. `Start` asks the
+    # one question that sets the funnel; `Intake` asks whatever that funnel
+    # needs. Everything below stays reachable from every funnel, in any order —
+    # the funnel is not a permissions system (docs/ARCHITECTURE.md §2). This
+    # adds a door in front of the menu; it does not re-cut it.
+    "Start": [
+        _page("pages/00_Start.py", "Start", "🎖️", default=True),
+        _page("pages/01_Intake.py", "Intake", "📝"),
+    ],
     # Status-independent: the money questions that do not care what your DD-214
     # says. Ordered as a new user walks them — who you are, what comes in, what
     # you hold, what the government takes, then the decisions run on top.
     "General": [
-        _page("pages/0_Overview.py", "Overview", "🎖️", default=True),
+        _page("pages/0_Overview.py", "Overview", "🎖️"),
         _page("pages/1_Profile.py", "Profile", "👤"),
         _page("pages/2_Pay.py", "Income", "💵"),
         _page("pages/4_Assets_and_Debts.py", "Accounts", "🏦"),
