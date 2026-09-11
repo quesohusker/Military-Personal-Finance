@@ -561,8 +561,11 @@ def test_questions_to_ask_reads_the_household_funnel():
     # It read the household rather than a default: the two sets differ, each
     # carries the whole common set, and neither carries a question belonging to
     # the other funnel. The conditional common questions are excluded -- this
-    # household is unmarried, so the spouse question is rightly absent.
-    unconditional = {q.key for q in QUESTIONS if q.when is None}
+    # household is unmarried, so the spouse question is rightly absent -- and
+    # so are the DERIVED ones, which are not asked at all (R1). They come back
+    # in `figures_to_check()` and are covered by their own tests below.
+    unconditional = {q.key for q in QUESTIONS
+                     if q.when is None and not q.is_derived}
     assert {q.key for q in retiree} != {q.key for q in serving}
     for asked, key in ((retiree, FUNNEL_RETIRED), (serving, FUNNEL_SERVING)):
         assert unconditional <= {q.key for q in asked}
@@ -710,15 +713,27 @@ def test_no_funnel_module_repeats_a_common_question():
                 f"{q.key} re-asks what the common set already asks"
 
 
-def test_the_gi_bill_question_writes_the_count_the_estate_page_reads():
-    # engine/estate/planning.py and roth_bridge.py read estate.n_children as
-    # the whole family -- gifting, bequests, heirs -- and pages/20 asks for it
-    # in those words. A label asking for a subset would quietly corrupt all of
-    # them.
-    q = next(q for q in intake.funnel_questions(FUNNEL_SERVING)
-             if (q.path, q.attr) == ("estate", "n_children"))
-    assert "GI Bill" not in q.label
-    assert "children do you have" in q.label
+def test_the_child_count_is_never_derived_from_dependants_claimed_for_pay():
+    """
+    R3 gives `estate.n_children` one home — the Estate page — and R1 does not
+    override that with a derivation that answers a different question.
+
+    `n_dependents` is the military pay and tax sense of the word: it INCLUDES A
+    SPOUSE, which is what BAH's with-dependants rate turns on, and intake asks
+    it two lines below "Are you married?". Deriving a child count from it made
+    `scorecard.components.legacy()` — scored only when the user says a legacy
+    is a goal (§3) — rate every married member with dependants on a goal they
+    never stated. See the note above DERIVED in engine/funnel.py.
+    """
+    for key in FUNNELS:
+        assert not any((d.path, d.attr) == ("estate", "n_children")
+                       for d in intake.all_derived(key)), \
+            f"{key} derives a child count from a pay concept"
+
+    h = Household(n_dependents=3, has_spouse=True)
+    set_funnel(h, FUNNEL_RETIRED)
+    intake.prepare(h)
+    assert h.estate.n_children == 0, "dependants claimed for pay are not heirs"
 
 
 def test_percent_questions_only_ever_write_decimal_fields():

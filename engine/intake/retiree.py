@@ -26,6 +26,9 @@ app price three things the owner of a plan like this usually gets wrong:
      DFAS compares them on GROSS, and CRSC is tax-free while CRDP is not, so
      the larger gross figure is routinely the smaller cheque. Pricing it needs
      years of service and the VA rating, which is why both are asked here.
+     WHETHER CRDP APPLIES IS NOT ASKED: the same module says it is automatic
+     at twenty years and a 50% rating, so the app works it out. CRSC is asked,
+     because it is the one you have to apply for.
 
   3. THE PART B DECISION AT 65. TRICARE For Life is a wraparound and does not
      exist without Part B, and the premium is set by MAGI from two years
@@ -35,10 +38,28 @@ app price three things the owner of a plan like this usually gets wrong:
      not looked at the traditional TSP balance the common set asks for, and
      this is where that bill lands.
 
+R1 GOVERNS THIS FILE. Every question carries a one-line WHY IT IS ASKED, and
+that comment is the standing defence against the set growing back. What this
+funnel works out rather than asks:
+
+    CRDP            twenty years and a 50% rating: it is automatic
+    Part B at 65    TRICARE For Life does not exist without it
+    children        the household's dependants (common set)
+    where you live  your legal residence, once you are out of uniform
+
+and what it stops asking once the answer cannot change anything:
+
+    TRICARE plan    not asked from 65, where For Life takes over and
+                    `healthcare._phase_at()` stops reading the field
+
+The one pay figure it does NOT work out is retired pay itself. See the comment
+on that question: a high-3 needs the pay tables in force in the three years
+before retirement and this app ships one year of them.
+
 WHAT IS DELIBERATELY NOT HERE. The common set in `engine/funnel.py` already
-asks birth year, sex, spouse, dependents, residence, every balance, the
-spending split and the target age; none of it is repeated. Grade, date of rank,
-duty ZIP and the TSP election belong to someone still serving. The COLA
+asks birth year, sex, spouse, dependents, residence, civilian wages, every
+balance, the spending split and the target age; none of it is repeated. Grade,
+date of rank, duty ZIP and the TSP election belong to someone still serving. The COLA
 assumption (`assumptions.cola_full`) is not asked either: it is a consequence
 of the retirement system resolved from the DIEMS date below, and
 `engine/assumptions.py::sanity()` already cross-checks the two and says so.
@@ -60,8 +81,9 @@ from __future__ import annotations
 
 from engine.benefits import concurrent_receipt as CR
 from engine.benefits import healthcare as HC
-from engine.funnel import (Question, FUNNEL_RETIRED, KIND_CHOICE, KIND_INTEGER,
-                           KIND_MONEY, KIND_NUMBER, KIND_TEXT, KIND_TOGGLE)
+from engine.funnel import (Question, Derived, FUNNEL_RETIRED, KIND_CHOICE,
+                           KIND_INTEGER, KIND_MONEY, KIND_NUMBER, KIND_TEXT,
+                           KIND_TOGGLE, GROUP_REVIEW, RANK_REVIEW)
 from engine.profile import DIEMS_BRS_START, RETIRED, Household
 
 # --------------------------------------------------------------------------
@@ -142,6 +164,47 @@ def crdp_eligible(h: Household) -> bool:
             and int(m.va_rating or 0) >= CR.CRDP_MIN_RATING)
 
 
+def under_medicare_age(h: Household) -> bool:
+    """
+    True while the Prime-or-Select choice is still a choice.
+
+    From 65 TRICARE For Life takes over and the stored plan stops being read:
+    `healthcare._phase_at()` returns the For Life phase at Medicare age for a
+    retiree whatever `tricare_plan` says. Asking after that is asking a
+    question whose answer changes no number.
+    """
+    return h.member.age() < HC.MEDICARE_AGE
+
+
+# --------------------------------------------------------------------------
+# Derivations. Pure functions of the Household, like the predicates.
+# --------------------------------------------------------------------------
+
+def derive_crdp(h: Household) -> bool:
+    """
+    CRDP applies when both statutory conditions are met, because it is
+    automatic.
+
+    `concurrent_receipt.eligibility()` says so in its own words -- "It is
+    automatic — no application is required" -- so there is no election to
+    record and no second opinion to have. Twenty years of service and a 50%
+    rating are both already on the plan.
+    """
+    return crdp_eligible(h)
+
+
+def derive_part_b(h: Household) -> bool:
+    """
+    Part B at 65, because TRICARE For Life does not exist without it.
+
+    Declining leaves a retiree with no coverage from 65 and a 10%-a-year
+    late-enrolment penalty, so the app assumes the normal answer rather than
+    asking for it. The review card is where the rare retiree who is covered by
+    an employer group plan past 65 says so.
+    """
+    return True
+
+
 # --------------------------------------------------------------------------
 # The set
 # --------------------------------------------------------------------------
@@ -150,6 +213,13 @@ QUESTIONS: tuple[Question, ...] = (
     # -- Retired pay and SBP ----------------------------------------------
     Question(key="ret_retired_pay",
              label="What is your gross retired pay, per month?",
+             # ASKED, and the one pay figure the app does NOT work out. A
+             # pension is a multiplier against a HIGH-3 AVERAGE of the basic
+             # pay tables in force in the three years before retirement, and
+             # `data/pay/` ships one year — the current one. Computing a 2005
+             # retiree's high-3 from the 2026 table would overstate it by every
+             # pay raise since, on the largest figure on the plan. The Retiree
+             # Account Statement is the only honest source.
              kind=KIND_MONEY, path="member", attr="retired_pay_monthly",
              group=GROUP_PAY, group_rank=RANK_PAY, order=10, funnels=(FUNNEL_RETIRED,),
              step=100.0, min_value=0.0,
@@ -161,6 +231,10 @@ QUESTIONS: tuple[Question, ...] = (
                   "against."),
     Question(key="ret_years_of_service",
              label="How many years did you serve?",
+             # ASKED: there is no retirement date on this funnel to subtract
+             # the DIEMS date from — a retiree of ten years standing would
+             # otherwise be credited with ten more years of service. It sets
+             # the multiplier and it is one of the two CRDP conditions.
              kind=KIND_NUMBER, path="member", attr="years_of_service",
              group=GROUP_PAY, group_rank=RANK_PAY, order=20, funnels=(FUNNEL_RETIRED,),
              min_value=0.0, max_value=45.0, step=0.5,
@@ -170,6 +244,8 @@ QUESTIONS: tuple[Question, ...] = (
                   "earnings history, because military pay counted in full."),
     Question(key="ret_diems",
              label="What is your DIEMS date, as YYYY-MM-DD?",
+             # ASKED: a date on a DD-214, and the only thing that decides the
+             # retirement system and therefore the COLA rule.
              kind=KIND_TEXT, path="member", attr="diems_date",
              group=GROUP_PAY, group_rank=RANK_PAY, order=30, funnels=(FUNNEL_RETIRED,),
              placeholder="1998-06-15",
@@ -184,6 +260,8 @@ QUESTIONS: tuple[Question, ...] = (
                   "lost every year in between."),
     Question(key="ret_csb_redux",
              label="Did you take the CSB/REDUX bonus at 15 years?",
+             # ASKED: an irreversible election recorded nowhere on the plan,
+             # and the single answer that most changes what a pension is worth.
              kind=KIND_TOGGLE, path="member", attr="took_csb_redux",
              group=GROUP_PAY, group_rank=RANK_PAY, order=40, funnels=(FUNNEL_RETIRED,),
              when=diems_predates_brs,
@@ -194,6 +272,8 @@ QUESTIONS: tuple[Question, ...] = (
                   "changes what your pension is worth."),
     Question(key="ret_brs_optin",
              label="Did you opt into BRS in the 2018 window?",
+             # ASKED: the DIEMS date says the window was open, not what you
+             # did in it.
              kind=KIND_TOGGLE, path="member", attr="opted_into_brs",
              group=GROUP_PAY, group_rank=RANK_PAY, order=50, funnels=(FUNNEL_RETIRED,),
              when=diems_predates_brs,
@@ -203,6 +283,9 @@ QUESTIONS: tuple[Question, ...] = (
                   "multiplier and would have added a TSP match."),
     Question(key="ret_sbp_elected",
              label="Did you elect SBP?",
+             # ASKED: an election made once, at retirement, and reversible only
+             # in a narrow window. Nothing on the plan records it and the
+             # survivor component is meaningless without it.
              kind=KIND_TOGGLE, path="member", attr="sbp_elected",
              group=GROUP_PAY, group_rank=RANK_PAY, order=60, funnels=(FUNNEL_RETIRED,),
              help="The Survivor Benefit Plan: a premium of 6.5% of the base "
@@ -216,9 +299,12 @@ QUESTIONS: tuple[Question, ...] = (
     # -- VA compensation and concurrent receipt ---------------------------
     Question(key="ret_va_monthly",
              label="What is your VA compensation, per month?",
+             # ASKED: there is no VA compensation rate schedule in this tree,
+             # and the award letter already has dependants and any special
+             # monthly compensation folded in, which a rating alone never would.
              kind=KIND_MONEY, path="member", attr="va_disability_monthly",
-             group=GROUP_VA, group_rank=RANK_VA, order=10, funnels=(FUNNEL_RETIRED,),
-             step=50.0, min_value=0.0,
+             group=GROUP_VA, group_rank=RANK_VA, order=20, funnels=(FUNNEL_RETIRED,),
+             when=is_va_rated, step=50.0, min_value=0.0,
              help="Tax-free at federal and state level, and indexed to the "
                   "same COLA as Social Security. Because it never appears on a "
                   "return it does not raise your taxable income, your Medicare "
@@ -228,8 +314,11 @@ QUESTIONS: tuple[Question, ...] = (
                   "has no field for."),
     Question(key="ret_va_rating",
              label="What is your VA rating, as a percentage?",
+             # ASKED: a decision the VA made. It sets the healthcare priority
+             # group and, with twenty years, whether CRDP applies — which the
+             # app then works out rather than asking.
              kind=KIND_INTEGER, path="member", attr="va_rating",
-             group=GROUP_VA, group_rank=RANK_VA, order=20, funnels=(FUNNEL_RETIRED,),
+             group=GROUP_VA, group_rank=RANK_VA, order=10, funnels=(FUNNEL_RETIRED,),
              min_value=0, max_value=100, step=10,
              help="The combined rating on your decision letter. It sets your "
                   "VA healthcare priority group, and at 50% or more with "
@@ -237,6 +326,8 @@ QUESTIONS: tuple[Question, ...] = (
                   "automatic."),
     Question(key="ret_va_permanent_total",
              label="Is your rating permanent and total?",
+             # ASKED: whether re-examinations have stopped is a finding on the
+             # letter, not a consequence of the percentage.
              kind=KIND_TOGGLE, path="member", attr="va_rating_permanent_total",
              group=GROUP_VA, group_rank=RANK_VA, order=30, funnels=(FUNNEL_RETIRED,),
              when=is_va_rated,
@@ -245,20 +336,12 @@ QUESTIONS: tuple[Question, ...] = (
                   "stream rather than an income that might be re-rated. It "
                   "also opens Chapter 35 education benefits for your "
                   "dependents and CHAMPVA for a family without TRICARE."),
-    Question(key="ret_crdp",
-             label="Does CRDP apply to you?",
-             kind=KIND_TOGGLE, path="member", attr="crdp_applies",
-             group=GROUP_VA, group_rank=RANK_VA, order=40, funnels=(FUNNEL_RETIRED,),
-             when=crdp_eligible,
-             help="Concurrent Retirement and Disability Pay: your retired pay "
-                  "is no longer reduced dollar for dollar by your VA "
-                  "compensation, so you receive both in full. It is automatic "
-                  "at twenty years and a 50% rating — no application — and it "
-                  "is asked here only because you meet both. CRDP is taxable, "
-                  "which is the whole reason the CRSC comparison below is "
-                  "worth making."),
     Question(key="ret_crsc",
              label="What CRSC do you receive, per month?",
+             # ASKED: unlike CRDP, CRSC is NOT automatic — you apply to your
+             # branch, and the amount is theirs to compute from which
+             # disabilities they find combat-related. Nothing here can predict
+             # either the award or the figure.
              kind=KIND_MONEY, path="member", attr="crsc_monthly",
              group=GROUP_VA, group_rank=RANK_VA, order=50, funnels=(FUNNEL_RETIRED,),
              when=is_va_rated, step=50.0, min_value=0.0,
@@ -273,9 +356,13 @@ QUESTIONS: tuple[Question, ...] = (
     # -- Your healthcare and Medicare -------------------------------------
     Question(key="ret_tricare_plan",
              label="Which TRICARE plan are you on?",
+             # ASKED, and only under 65: Prime against Select is a real
+             # election with a real fee, and nothing on the plan implies which
+             # one you made. From 65 it is not asked at all — For Life takes
+             # over and `healthcare._phase_at()` stops reading this field.
              kind=KIND_CHOICE, path="healthcare", attr="tricare_plan",
              group=GROUP_HEALTH, group_rank=RANK_HEALTH, order=10, funnels=(FUNNEL_RETIRED,),
-             options=TRICARE_PLANS,
+             when=under_medicare_age, options=TRICARE_PLANS,
              help="Prime is the HMO — a primary care manager, referrals, "
                   "near-zero copays, and you must live in a Prime service "
                   "area. Select is the PPO — any authorised provider, with "
@@ -284,10 +371,18 @@ QUESTIONS: tuple[Question, ...] = (
                   "pre-65 coverage gap, so the subsidy cliff that caps a "
                   "civilian early retiree's Roth conversions does not apply "
                   "to you."),
+    # ======================================================================
+    # The figures we worked out. NOT ASKED — it renders on the review card at
+    # the end of intake with what the app assumed, and why.
+    # ======================================================================
     Question(key="ret_part_b",
              label="Will you take Medicare Part B when you are eligible?",
              kind=KIND_TOGGLE, path="healthcare", attr="part_b_when_eligible",
-             group=GROUP_HEALTH, group_rank=RANK_HEALTH, order=20, funnels=(FUNNEL_RETIRED,),
+             group=GROUP_REVIEW, group_rank=RANK_REVIEW, order=10,
+             funnels=(FUNNEL_RETIRED,),
+             derive=derive_part_b, fills_in=True,
+             derived_from="TRICARE For Life needing it, which makes taking it "
+                          "the normal answer",
              help="TRICARE For Life is a wraparound to Medicare and exists "
                   "only for people enrolled in Part A and Part B. Decline Part "
                   "B and you have no coverage from 65, and a late-enrollment "
@@ -296,4 +391,17 @@ QUESTIONS: tuple[Question, ...] = (
                   "deadline: the premium is set by your income from two years "
                   "earlier, in steps, so what you convert at 63 sets what you "
                   "pay at 65."),
+)
+
+
+# --------------------------------------------------------------------------
+# Settled facts: worked out, written into the plan, never a widget
+# --------------------------------------------------------------------------
+
+DERIVED: tuple[Derived, ...] = (
+    Derived(key="ret_d_crdp", label="Concurrent receipt (CRDP)",
+            path="member", attr="crdp_applies", compute=derive_crdp,
+            because="twenty years of service and a rating of 50 percent or "
+                    "more make it automatic — there is nothing to apply for",
+            funnels=(FUNNEL_RETIRED,)),
 )

@@ -29,7 +29,7 @@ PREFIX = "vet_"
 def vet_household(**member) -> Household:
     """A separated veteran, prepared the way the renderer prepares one."""
     h = Household(member=ServiceMember(component=VETERAN, **member))
-    prepare(h)
+    intake.prepare(h)          # the page's prepare: it sees V.DERIVED too
     return h
 
 
@@ -231,10 +231,20 @@ def test_the_separation_date_and_the_life_cover_are_both_asked():
 
 
 def test_the_social_security_earnings_history_has_everything_it_needs():
-    # engine/income/social_security.py::estimate_pia_from_career reads all four.
-    attrs = {q.attr for q in V.QUESTIONS}
+    """
+    engine/income/social_security.py::estimate_pia_from_career reads all four,
+    and the veteran funnel still puts all four on the plan — but no longer by
+    asking for all four. Years of service is worked out from the two DD-214
+    dates, and civilian wages moved into the common set because a Guard
+    member's day job and a retiree's second career are the same fact (R3).
+    """
+    from engine.funnel import QUESTIONS as COMMON_SET
+    attrs = ({q.attr for q in V.QUESTIONS}
+             | {q.attr for q in COMMON_SET})
     assert {"diems_date", "years_of_service", "grade",
             "civilian_wages_annual"} <= attrs
+    assert not any(q.attr == "civilian_wages_annual" for q in V.QUESTIONS), \
+        "civilian wages belong to the common set now, and to one place only"
 
 
 def test_the_final_grade_offers_only_grades_the_pay_tables_know():
@@ -274,10 +284,15 @@ def test_permanent_and_total_is_asked_once_it_could_apply(rating):
 
 
 def test_the_unconditional_questions_are_on_screen_for_a_blank_plan():
-    on_screen = keys_on_screen(vet_household())
+    h = vet_household()
+    on_screen = keys_on_screen(h)
+    reviewed = {q.key for q in intake.figures_to_check(h)}
     for q in V.QUESTIONS:
         if q.when is None:
-            assert q.key in on_screen, q.key
+            # Asked, or worked out and offered back for correction. Never
+            # missing, and never both (R1).
+            assert (q.key in on_screen) != (q.key in reviewed), q.key
+            assert (q.key in reviewed) == q.is_derived, q.key
 
 
 def test_every_predicate_is_a_named_function_not_a_lambda():
@@ -290,14 +305,15 @@ def test_every_predicate_is_a_named_function_not_a_lambda():
 # Cards
 # ==========================================================================
 
-def test_every_question_sits_in_one_of_this_module_s_three_cards():
-    cards = {V.GROUP_SEPARATION, V.GROUP_VA, V.GROUP_CIVILIAN}
+def test_every_question_sits_in_one_of_this_module_s_cards():
+    cards = {V.GROUP_SEPARATION, V.GROUP_VA, intake.GROUP_REVIEW}
     assert {q.group for q in V.QUESTIONS} == cards
 
 
 def test_the_cards_come_out_after_the_common_ones_in_the_order_the_story_runs():
     titles = [t for t, _ in intake.grouped(intake.all_questions(FUNNEL_VETERAN))]
-    assert titles[-3:] == [V.GROUP_SEPARATION, V.GROUP_VA, V.GROUP_CIVILIAN]
+    # The story, then the review card, which is always last of all.
+    assert titles[-3:] == [V.GROUP_SEPARATION, V.GROUP_VA, intake.GROUP_REVIEW]
 
 
 def test_order_leaves_gaps_of_ten_so_an_insert_does_not_renumber():

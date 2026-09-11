@@ -13,6 +13,10 @@ You are writing one of `engine/intake/serving.py`, `veteran.py`,
 `retiree.py`, or the pages that render them. Do not edit `engine/funnel.py`,
 `engine/profile.py` or `engine/storage.py`.
 
+`engine/intake/pay_check.py` is a third module in the package: it computes a
+serving member's pay packet and the confirmation step over it. It is not a
+funnel module — `MODULES` does not name it — and `serving.py` imports it.
+
 ---
 
 ## 1. The import surface
@@ -27,14 +31,22 @@ from engine.intake import (
     Funnel, FUNNEL_SPECS, spec, label_for, is_chosen,
     # reading and writing the funnel on a plan
     infer_funnel, funnel_of, set_funnel,
-    # the question schema
-    Question, QUESTIONS, KINDS, GROUP_ORDER, validate,
+    # the question schema, and the two shapes of a worked-out answer
+    Question, Derived, QUESTIONS, DERIVED, KINDS, GROUP_ORDER,
+    GROUP_REVIEW, RANK_REVIEW, validate,
     # assembly
     prepare, questions_to_ask, all_questions, funnel_questions, grouped,
+    # the review step (§13)
+    figures_to_check, facts_settled, all_derived, funnel_derived,
+    apply_derivations, review_statement, review_findings,
     # spending
     essential_monthly, discretionary_monthly, has_essential_split,
 )
 ```
+
+The widget-kind constants are re-exported too (`KIND_TEXT`, `KIND_INTEGER`,
+`KIND_NUMBER`, `KIND_MONEY`, `KIND_PCT`, `KIND_TOGGLE`, `KIND_CHOICE`), so a
+page that needs to format a value by kind does not reach into `engine.funnel`.
 
 A funnel-specific intake module imports from `engine.funnel` directly, because
 `engine.intake` imports *it* and the other direction would be a cycle:
@@ -58,10 +70,23 @@ from engine.funnel import (Question, FUNNEL_SERVING, KIND_MONEY, KIND_TOGGLE,
 | `funnel_of(h)` | **The one you call.** The stored answer if there is one, otherwise the inference. Always one of `FUNNELS`. |
 | `infer_funnel(h)` | The inference alone. Only for a plan that has never been asked. |
 | `set_funnel(h, key)` | Record the answer *and* fix `h.member.component`. |
-| `prepare(h)` | Normalise before a render pass. Call it once at the top of the page. |
-| `questions_to_ask(h)` | Everything to put on screen, in render order. |
+| `prepare(h)` | Normalise before a render pass. Call it once at the top of the page. **Import it from `engine.intake`, never from `engine.funnel`** — see below. |
+| `questions_to_ask(h)` | Everything to ASK, in render order. Nothing the app can work out is in it. |
+| `figures_to_check(h)` | The worked-out figures offered back for correction — the review card (§13). |
+| `facts_settled(h)` | The worked-out facts that get no widget (§13). |
+| `review_statement(h)` | Read-only rows a funnel wants shown on the review card. |
+| `review_findings(h)` | `(severity, headline, detail)` triples about those rows. |
+| `apply_derivations(h, pool, derived)` | Fill in everything the funnel can work out. `prepare()` calls it; you should not. |
 | `grouped(qs)` | Those questions bundled into input cards. |
-| `validate(qs)` | Problems in a question set, as sentences. Empty is good. |
+| `validate(qs, household, derived)` | Problems in a question set, as sentences. Empty is good. |
+
+**There are two `prepare`s and only one of them is complete.**
+`engine.funnel.prepare(h)` can see only the COMMON question set, because the
+funnel modules import `engine.funnel` and the other direction would be a
+cycle. `engine.intake.prepare(h)` hands it the assembled set and is the one
+every page and every test helper must call. Importing `prepare` from
+`engine.funnel` gives you a household with the funnel-specific derivations
+missing, and nothing will tell you.
 
 `Funnel` is data, not behaviour: `key`, `label`, `description`, `implies`
 (a tuple of plain statements), `default_component`, `frame`.
@@ -143,6 +168,9 @@ Question(
     funnels=(FUNNEL_SERVING,),              # which funnels ask it
     help="Everything dated runs off this.",
     when=None,                              # optional predicate, see §5
+    derive=None,                            # optional derivation, see §13
+    derived_from="",                        # one line: what it came from
+    fills_in=False,                         # write it into the plan, or not
     min_value=1930, max_value=2015,         # widget extras, see §4
 )
 ```
@@ -160,9 +188,14 @@ Question(
 | `group_rank` | `0` | **The order of your cards.** Every question on a card repeats its card's rank — `validate()` rejects a card carrying two. Leave gaps of 10. A card left at `0` falls back to sorting by title, which is a trap: a title is prose, prose gets rewritten, and the fallback is case-sensitive. Declare a rank. |
 | `order` | `0` | Within the group. Leave gaps of 10. |
 | `when` | `None` | §5. |
+| `derive` | `None` | A pure function of the Household. **Setting it takes the question OUT of the asked set** and puts it on the review card, seeded with what the app worked out. §13. |
+| `derived_from` | `""` | One line naming the source, printed under the widget. `validate()` requires it whenever `derive` is set. |
+| `fills_in` | `False` | `True` writes the derived value into the plan; `False` leaves the field a pure override slot. §13. |
 
 ### Methods — use these, do not reimplement them
 
+* `q.is_derived -> bool` — does the app work this out rather than ask it.
+* `q.derived_value(h)` — what it works it out to be, or `None`.
 * `q.asks(funnel) -> bool` — is it in that funnel's set at all.
 * `q.applies(h) -> bool` — **both** gates: the household's funnel asks it *and*
   `when` passes. This is what the renderer checks.
@@ -263,17 +296,23 @@ crashing — but it hides them wrongly.
 
 ## 6. How a funnel module registers its questions
 
-The entire contract is one line:
+The entire contract is two names, and two optional functions:
 
 ```python
 # engine/intake/retiree.py
 QUESTIONS: tuple[Question, ...] = (...)
+DERIVED:   tuple[Derived, ...]   = (...)      # optional; () is fine
+
+def statement(h) -> list[tuple[str, str]]: ...        # optional, §13
+def findings(h)  -> list[tuple[str, str, str]]: ...   # optional, §13
 ```
 
-A module-level tuple of `Question`, every one carrying `funnels=(FUNNEL_X,)`
-for its own funnel. **No registration call, no import-time side effects, no
-mutable global registry.** `engine/intake/__init__.py` imports the module by
-name from `MODULES` and reads `QUESTIONS` off it.
+Module-level tuples of `Question` and `Derived`, every one carrying
+`funnels=(FUNNEL_X,)` for its own funnel. **No registration call, no
+import-time side effects, no mutable global registry.**
+`engine/intake/__init__.py` imports the module by name from `MODULES` and
+reads the names off it. A module that defines none of the optional names
+behaves exactly as before.
 
 * The three modules are `engine/intake/serving.py`, `veteran.py`, `retiree.py`.
   The names are fixed by `MODULES`.
@@ -298,7 +337,18 @@ def test_the_retiree_set_validates():
 options, a funnel key that does not exist, a label that does not end in `?` or
 does not open with a question word, a `$` pair in any user-visible string, a
 missing group, a card carrying two different `group_rank` values within one
-funnel, and an `attr` that does not exist on the object `path` resolves to.
+funnel, an `attr` that does not exist on the object `path` resolves to, a
+derived question with no `derived_from` or sitting outside the review card, a
+`Derived` with no `because`, and a field that is both asked and derived within
+one funnel.
+
+Pass the derived set too, or half of that is unchecked:
+
+```python
+def test_the_retiree_set_validates():
+    assert intake.validate(intake.all_questions(FUNNEL_RETIRED),
+                           derived=intake.all_derived(FUNNEL_RETIRED)) == []
+```
 
 Two funnels **may** reuse a card title and rank it differently — only questions
 that render together have to agree. "Leaving the service" is rank 70 for
@@ -307,31 +357,42 @@ DD-214).
 
 ### What the common set already asks — do not ask it again
 
-`engine.funnel.QUESTIONS`, sixteen questions in six groups:
+`engine.funnel.QUESTIONS`, seventeen questions in seven groups:
 
 | Group | Fields |
 |---|---|
 | About you | `member.birth_year`, `member.sex` |
 | Your household | `has_spouse`, `spouse.birth_year`, `n_dependents` |
-| Where you live | `state_of_legal_residence`, `current_state` |
+| Where you live | `state_of_legal_residence` |
+| What you earn | `member.civilian_wages_annual` (not on active duty) |
 | What you have saved | `member.tsp_traditional_balance`, `member.tsp_roth_balance`, `member.ira_traditional_balance`, `member.ira_roth_balance`, `taxable_brokerage`, `cash_savings` |
 | What you spend | `monthly_expenses`, `essential_monthly_expenses` |
 | When you stop working | `target_retirement_age` |
+| The figures we worked out | `current_state` — derived, see §13 |
 
 The group constants are `GROUP_ABOUT`, `GROUP_HOUSEHOLD`, `GROUP_WHERE`,
-`GROUP_BALANCES`, `GROUP_SPENDING`, `GROUP_PLAN`, ordered by `GROUP_ORDER`.
+`GROUP_EARN`, `GROUP_BALANCES`, `GROUP_SPENDING`, `GROUP_PLAN`, ordered by
+`GROUP_ORDER`, plus `GROUP_REVIEW` which is outside that order because the
+page renders it last on its own.
 
-Per `ARCHITECTURE.md` §5, the funnel-specific sets are roughly:
+The common set also DERIVES `estate.n_children` from `n_dependents`, which is
+what `engine/tax/current_year.py` has always done with the count. Do not ask
+for it.
 
-* **serving** — DIEMS date (first; it decides the retirement system and nothing
-  else does), grade, years of service, date of rank, duty ZIP,
-  dependents-for-pay, government housing, TSP contribution % and Roth share,
-  deployment and combat-zone months, SGLI, planned separation, promotions,
-  GI Bill.
-* **veteran** — separation date, years served, VA rating and P&T, GI Bill
-  remaining, VGLI vs term, civilian employer plan.
-* **retiree** — retired pay gross, retirement system, SBP elected and level,
-  VA rating, CRDP/CRSC, TRICARE plan.
+Per `ARCHITECTURE.md` §5, and after R1 took out everything the app can work
+out, the funnel-specific sets are:
+
+* **serving** — DIEMS date (first; it decides the retirement system, the TSP
+  match and how long you have served, and nothing else does), grade, duty ZIP,
+  government housing, special pays and bonuses, TSP contribution % and Roth
+  share, deployment and combat-zone months, planned separation. Worked out
+  rather than asked: years of service, date of rank, basic pay, BAS, BAH, SGLI
+  cover, dependants-for-pay, hostile fire pay.
+* **veteran** — entry date, separation date, grade at separation, VA rating
+  and what the VA pays, P&T. Worked out: years served, life cover.
+* **retiree** — retired pay gross, years of service, DIEMS date, SBP, VA
+  rating and compensation, CRSC, TRICARE plan (under 65 only). Worked out:
+  CRDP, Part B.
 
 ---
 
@@ -431,8 +492,10 @@ copy you write about it.
 ## 10. Persistence
 
 `Household.funnel`, `Household.essential_monthly_expenses` and
-`Household.target_retirement_age` are the three new fields. They round-trip for
-free: `to_dict()` is `asdict()` and `_build()` skips keys a file does not
+`Household.target_retirement_age` are the three new fields on the Household,
+and `ServiceMember.gross_pay_monthly_confirmed` and
+`net_pay_monthly_confirmed` are the two on the member (§13). They round-trip
+for free: `to_dict()` is `asdict()` and `_build()` skips keys a file does not
 carry.
 
 **There is no versioned migration in this codebase.** The `schema_version`
@@ -487,6 +550,31 @@ silently reorder the page. That is the right instinct about the wrong
 mechanism. `group_rank` is the fix — see §3. The title fallback still exists
 for a card that declares nothing, and it is still a trap, so declare a rank.
 
+### Basic pay, BAS and BAH are removed from intake, not demoted
+
+An earlier pass put the three `*_monthly_override` fields on the review card,
+prefilled with the table figure. Paul's ruling: "Remove them from the asked set
+entirely — not demoted to an override field sitting blank in the flow, removed.
+The app knows them."
+
+They are gone from intake. `pages/2_Pay.py` still offers the basic pay and BAH
+overrides, which is the right home for a correction to a single component, and
+intake shows the whole packet back instead and asks about the two figures a
+deduction moves. `bas_monthly_override` still has no page — §4a's note stands —
+but it is now visible on the review statement rather than invisible entirely.
+
+### Two fields were added to `ServiceMember`, and something reads them
+
+`gross_pay_monthly_confirmed` and `net_pay_monthly_confirmed`. This is the one
+place this work edited `engine/profile.py`, and the §11 standard applies: **a
+field that exists and changes nothing is worse than no field.** These are read
+by `pay_check.resolve_gross_monthly()` and `resolve_net_monthly()`, and by
+`pay_check.findings()`, which is what tells the member their net is a few
+hundred short of the tables and that a deduction, an allotment or a
+garnishment is the usual reason. Whoever extends the projection spine over the
+serving years (`ARCHITECTURE.md` step 4) should resolve pay through those two
+functions rather than re-deriving it.
+
 ### The label rule is enforced, and the format hint moves to `help`
 
 The contract said `validate()` enforced "starts with a question word" and it
@@ -512,6 +600,178 @@ scorecard component or explaining one:
 | spouse, SBP, VA P&T | **6 Survivor** |
 | cash, debts, spending | **7 Liquidity & debt** |
 | children, legacy intent | **8 Legacy** |
+| special pays, and a confirmed gross and net | **2 Funded ratio**, **7 Liquidity & debt** — what actually arrives every month, which a deduction moves and a table cannot see |
 
 If a question you are about to add does not appear in that table, it needs a
 reason to exist that is better than "the old page asked it".
+
+---
+
+## 13. The review step, and the two shapes of a worked-out answer
+
+`ARCHITECTURE.md` R1: **"A question earns its place only if the answer cannot
+be derived. The test is not 'is this useful?' — it is 'can the app work it
+out?'"** Everything in this section exists to make that enforceable rather
+than aspirational.
+
+Before you add a question, answer three things in order. The answer decides
+which of three places it goes.
+
+1. **Can the app work it out?** Then it does. Write the derivation, not the
+   question.
+2. **Can the app work it out, but get it wrong in a way only the member can
+   see?** Then it is a `Question` carrying `derive`. It is not asked; it
+   renders on the review card at the end of intake, seeded with the computed
+   figure and captioned with where that figure came from.
+3. **Is it genuinely unknowable — a birth year, a DIEMS date, a balance, a VA
+   rating, an election made at myPay?** Then it is a question, and it carries a
+   one-line comment in the module saying why the app cannot work it out. That
+   comment is the standing defence against the set growing back. **If you
+   cannot write the line, you have case 1.**
+
+### The two shapes
+
+```python
+Question(..., derive=fn, derived_from="...", fills_in=True|False)
+Derived(key=..., label=..., path=..., attr=..., compute=fn, because="...")
+```
+
+|  | `Question(derive=…)` | `Derived(…)` |
+|---|---|---|
+| Rendered as | a widget on the review card | a line of prose under it |
+| The user can | overrule it, for good | not overrule it |
+| Written into the plan | only when `fills_in=True` | always |
+| For | a figure the app can get wrong | a fact with no second opinion |
+
+**Why a settled fact gets no widget, stated once so nobody re-litigates it.**
+A derivation may only overwrite a field that is still at its **declared
+dataclass default** — that is the whole anti-stomp rule, and it is what makes
+a typed correction permanent. For a boolean whose derivation says `True`, the
+contrary answer *is* the default, so there is no way to hold "no, really,
+False" that the next render pass would not undo. Rather than ship a toggle
+that silently flips back, a fact like that is either settled or it stays a
+question. Nothing in between. `is_untouched(obj, attr)` is the test, and it is
+as crude as `pages/01_Intake.py::_answered` already admits to being: an answer
+that happens to equal the default is indistinguishable from an untouched one
+and will be re-derived. The review card shows the figure and its source, so
+that is visible rather than silent.
+
+### `fills_in`, which is the same convention the app already had
+
+`engine/pay/taxable.py::resolve_basic_monthly()` states it: **the LES figure
+wins, the published table is the fallback.** A field that works that way —
+every `*_monthly_override`, and the two `*_confirmed` fields — must stay BLANK
+until the member types in it, because blank is what means "use the
+derivation". Those carry `fills_in=False`.
+
+A field with no engine-side fallback is the other case: `years_of_service`,
+`current_state`, `sgli_coverage`. Nothing downstream knows to compute them, so
+the derived value is written into the plan and `fills_in=True`.
+
+### Pay: known quantities, and the two figures that are not
+
+Paul, and it settles the whole pay question:
+
+> "Base pay, BAS, and BAH is a known quantity. Ask about special pays, and
+> confirm the gross and net pay amounts, as they may be affected by deduction
+> amounts or something like a garnishment."
+
+So:
+
+* **Basic pay, BAS and BAH are never asked, in any form.** Not a question, and
+  not an override field sitting blank in the flow either. They fall out of
+  grade + years of service, grade, and duty ZIP + grade + dependants, and
+  `engine/pay/` computes all three.
+* **Special pays and bonuses are asked**, in the main flow, with the
+  taxable/non-taxable distinction. An assignment or a qualification is not a
+  consequence of a pay grade and no table produces one.
+* **Gross and net are confirmed.** `engine/intake/pay_check.py` computes the
+  packet line by line, `statement(h)` returns it as read-only rows, and two
+  widgets ask the member to confirm the two figures a deduction moves. A
+  confirmed figure wins over the app's arithmetic — the same rule as basic pay
+  — and `findings(h)` says so in words, naming the likely cause when the gap is
+  worth naming and staying quiet when it is inside `MATERIAL_GAP_MONTHLY`.
+
+`ServiceMember.gross_pay_monthly_confirmed` and `net_pay_monthly_confirmed`
+are the two fields that carry the answers. **`0.0` means "not confirmed"**, as
+with every override field on the model. Read them through
+`pay_check.resolve_gross_monthly()` and `resolve_net_monthly()`, which return
+`(value, source)` exactly as `resolve_basic_monthly()` does. Never raw.
+
+### How the page renders it
+
+```python
+prepare(h)                                  # fills everything derivable in
+for title, qs in grouped(questions_to_ask(h)):   # only what is ASKED
+    with input_card(title):
+        for q in qs: render(q)
+
+with input_card(GROUP_REVIEW):              # everything worked out, last
+    show(review_statement(h))               # read-only rows, if the funnel has any
+    for q in figures_to_check(h):
+        render(q); caption(q.derived_from)
+    for d in facts_settled(h):
+        line(d.label, d.value(h), d.because)
+render_findings(review_findings(h))         # on the RIGHT, like every finding
+```
+
+The page still names no funnel. `statement()` and `findings()` are how a
+funnel shows its own arithmetic without the renderer learning what a pay
+packet is.
+
+---
+
+## 14. Rulings, round three
+
+### R3 targets a fact with two disagreeing homes, not a field with two widgets
+
+Twelve fields are bound by a `ui.panel` helper on both the intake page and a
+drill-down page — balances and spending on **Accounts**, special pay and the
+bonus on **Income**, the TRICARE plan and Part B on **Healthcare**. Read
+literally, R3 ("no field is asked on two pages") forbids that. It is not what
+R3 is for, and removing them would make the app worse.
+
+A `ui.panel` helper writes **the same field, through the same code path**, and
+calls `mark_dirty()` and `invalidate()`. A correction made on either page is
+the correction everywhere. Nothing diverges, because there is only one value.
+
+Meanwhile §6 makes every one of those pages the **drill-down for a scorecard
+component** — "the place you go when a rating is low and you want to know what
+to do about it", and `scorecard/components.py` links to them by name: the
+funded-ratio component's way out is *Fix this: Accounts*. A drill-down that
+cannot change the thing it drills into is not a drill-down. Stripping the
+widgets to satisfy the letter of R3 would break §6 to fix nothing.
+
+**So the rule is the harm, stated directly.** A second widget on a fact is a
+defect when either of these is true:
+
+1. **It does not write back.** The widget is seeded from the plan and holds its
+   answer in a page-local variable or bare `st.session_state`, so a member who
+   corrects a figure there has corrected nothing. This is §4a's finding and it
+   is the real defect.
+2. **It means something else.** Two widgets writing one field while asking
+   different questions — the GI Bill "how many children could use it" writing
+   `estate.n_children`, which the Estate page reads as the whole family. Round
+   one fixed that one; round three's `n_children` derivation was the same
+   defect arriving from the other direction and is recorded in §13.
+
+A second widget that writes the same field through a `ui.panel` helper and
+asks the same question is a drill-down, and it stays.
+
+### What is still outstanding on R3
+
+The three pages §4a named as writing nothing back are **untouched**:
+
+| Page | Raw `st.*` widgets | Write-through helpers |
+|---|---|---|
+| `pages/8_Retirement.py` (Pension) | 5 | 0 |
+| `pages/11_Separation_and_Insurance.py` (Medical Separation) | 21 | 0 |
+| `pages/22_This_Years_Taxes.py` (Taxes) | 7 | 0 |
+
+Thirty-three inputs, every one of them seeded from the profile and thrown away.
+That is the R3 work that remains, and it is a scoped, separate piece: each
+widget needs a field to write into, and several — an SBP base amount, a
+severance figure, the eighteen Medical Separation knobs — have no field on
+`ServiceMember` yet. Converting them is not a sweep, it is a data-model change
+per page. **It is not done, it is not partly done, and it is not blocked by
+anything in intake.**

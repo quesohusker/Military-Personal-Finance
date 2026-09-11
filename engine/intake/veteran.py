@@ -30,6 +30,29 @@ about. The assets are real and they are unusual:
     `VGLI_FINAL_DEADLINE_DAYS`, and then gone.
     `engine/benefits/life_insurance.py` prices both sides of it.
 
+R1 GOVERNS THIS FILE. Every question carries a one-line WHY IT IS ASKED, and
+that comment is the standing defence against the set growing back. Three
+things this funnel works out rather than asks:
+
+    years served        the two dates on the DD-214, subtracted
+    life cover          nothing: SGLI ended at separation and the stored
+                        default of full cover is a lie for a veteran
+    children            the household's dependants (common set)
+
+The first two are offered back for correction on the review card at the end of
+intake. Two more were removed outright:
+
+  * CIVILIAN WAGES moved into the common set, because a retiree's second
+    career and a Guard member's day job are the same fact and were being asked
+    for in three places (R3).
+  * WHAT HEALTH COVER COSTS is not asked at all now.
+    `healthcare.lifetime_cost()` already charges a veteran the published
+    worker's share of an employer plan for every year of the projection, so
+    the question was asking for a figure the model holds -- and its old help
+    text said "premiums, deductibles and what you actually spend", which
+    double-counts the premium the model had already charged. The Healthcare
+    page keeps the field for anyone who wants to add what they pay on top.
+
 Contract: `docs/FUNNEL_CONTRACT.md`. Every key here is prefixed `vet_`, every
 question carries `funnels=(FUNNEL_VETERAN,)`, and the whole registration is the
 module-level `QUESTIONS` tuple at the bottom. This module imports from
@@ -37,8 +60,9 @@ module-level `QUESTIONS` tuple at the bottom. This module imports from
 never from `streamlit` or `ui.panel`.
 
 NOT ASKED HERE, and deliberately: anything the common set in `engine/funnel.py`
-already asks (birth year, spouse, dependents, residence, balances, spending,
-target retirement age), and anything that only exists against retired pay.
+already asks (birth year, spouse, dependents, residence, civilian wages,
+balances, spending, target retirement age), and anything that only exists
+against retired pay.
 
 NOT ASKED HERE, for want of somewhere to put the answer: months of Post-9/11
 GI Bill entitlement remaining, and a civilian employer retirement plan and its
@@ -51,9 +75,12 @@ belongs to nobody in this pass.
 
 from __future__ import annotations
 
+from datetime import date
+
 from engine.benefits import life_insurance as LI
 from engine.funnel import (Question, FUNNEL_VETERAN, KIND_CHOICE, KIND_MONEY,
-                           KIND_NUMBER, KIND_TEXT, KIND_TOGGLE)
+                           KIND_NUMBER, KIND_TEXT, KIND_TOGGLE,
+                           GROUP_REVIEW, RANK_REVIEW)
 from engine.pay import grades as G
 from engine.profile import Household
 
@@ -77,11 +104,9 @@ from engine.profile import Household
 
 GROUP_SEPARATION = "Leaving the service"
 GROUP_VA = "Your VA benefits"
-GROUP_CIVILIAN = "Your civilian life"
 
 RANK_SEPARATION = 10
 RANK_VA = 20
-RANK_CIVILIAN = 30
 
 #: VA disability ratings are awarded in ten-point steps. A free integer box
 #: invites a 37% that no award letter has ever carried, so this is a menu.
@@ -113,6 +138,46 @@ def _as_percent(value) -> str:
 
 
 # --------------------------------------------------------------------------
+# Derivations. Pure functions of the Household, like the predicates.
+# --------------------------------------------------------------------------
+
+def _parsed(text: str) -> date | None:
+    try:
+        return date.fromisoformat((text or "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def derive_years_served(h: Household) -> float | None:
+    """
+    How long you served: the DD-214's two dates, subtracted.
+
+    Both are already asked, because both are needed for other things -- the
+    entry date starts the Social Security earnings record and the separation
+    date starts every insurance deadline. Their difference is not a third
+    fact. None when either date is missing or does not parse, and nothing is
+    written.
+    """
+    start, end = h.member.diems, _parsed(h.member.planned_separation_date)
+    if start is None or end is None or end < start:
+        return None
+    return round((end - start).days / 365.25, 1)
+
+
+def derive_life_cover(h: Household) -> float:
+    """
+    Nothing, because SGLI ended at separation and nothing replaces it by
+    default.
+
+    The stored default is full SGLI cover, which is right for a member and a
+    lie for a veteran: left alone it would put half a million dollars of
+    phantom insurance into the survivor component. A veteran who took VGLI or
+    bought term says so on the review card.
+    """
+    return 0.0
+
+
+# --------------------------------------------------------------------------
 # The set
 # --------------------------------------------------------------------------
 
@@ -124,6 +189,9 @@ QUESTIONS: tuple[Question, ...] = (
     # they sit together and they sit first.
     Question(key="vet_service_entry",
              label="When did you first enter the service?",
+             # ASKED: a date on a DD-214. It starts the Social Security
+             # earnings record, and with the separation date it is where the
+             # length of service comes from.
              kind=KIND_TEXT, path="member", attr="diems_date",
              group=GROUP_SEPARATION, group_rank=RANK_SEPARATION, order=10, funnels=(FUNNEL_VETERAN,),
              placeholder="2003-08-11",
@@ -133,18 +201,10 @@ QUESTIONS: tuple[Question, ...] = (
                   "there is no retirement system to resolve — but it is where "
                   "your Social Security earnings record starts, and a year "
                   "out is a year of basic pay missing from the estimate."),
-    Question(key="vet_years_served",
-             label="How many years did you serve?",
-             kind=KIND_NUMBER, path="member", attr="years_of_service",
-             group=GROUP_SEPARATION, group_rank=RANK_SEPARATION, order=20, funnels=(FUNNEL_VETERAN,),
-             min_value=0.0, max_value=40.0, step=0.5, fmt="%.1f",
-             help="Total creditable service, Guard and Reserve time included. "
-                  "Military basic pay has carried Social Security tax since "
-                  "1957, so every one of these years is in your earnings "
-                  "record at its full basic-pay value, and active duty before "
-                  "2002 earned extra credits on top of it."),
     Question(key="vet_grade_at_separation",
              label="What pay grade did you hold when you left?",
+             # ASKED: rank is not computable. It is what the earnings estimate
+             # rebuilds a career of basic pay from, and nothing else says it.
              kind=KIND_CHOICE, path="member", attr="grade",
              group=GROUP_SEPARATION, group_rank=RANK_SEPARATION, order=30, funnels=(FUNNEL_VETERAN,),
              options=tuple(G.GRADE_LABELS),
@@ -155,6 +215,8 @@ QUESTIONS: tuple[Question, ...] = (
 
     Question(key="vet_separation_date",
              label="When did you leave the service?",
+             # ASKED: the other date on the DD-214. Every insurance deadline
+             # runs off it, and so does the length of service.
              kind=KIND_TEXT, path="member", attr="planned_separation_date",
              group=GROUP_SEPARATION, group_rank=RANK_SEPARATION, order=40, funnels=(FUNNEL_VETERAN,),
              placeholder="2019-06-30",
@@ -164,23 +226,11 @@ QUESTIONS: tuple[Question, ...] = (
                   f"it for free, VGLI's guaranteed acceptance lasts "
                   f"{LI.VGLI_GUARANTEED_DAYS} days, and the final door closes "
                   f"at {LI.VGLI_FINAL_DEADLINE_DAYS} days."),
-    Question(key="vet_life_cover",
-             label="How much life insurance do you carry now?",
-             kind=KIND_MONEY, path="member", attr="sgli_coverage",
-             group=GROUP_SEPARATION, group_rank=RANK_SEPARATION, order=50, funnels=(FUNNEL_VETERAN,),
-             step=50_000.0, min_value=0.0,
-             help="SGLI ended when you separated, so whatever you hold now is "
-                  "VGLI, a commercial term policy, or nothing. VGLI is priced "
-                  "in five-year age bands and the premium climbs hard exactly "
-                  "when a fixed income is least able to absorb it; level term "
-                  "is usually a fraction of it for anyone who can pass "
-                  "underwriting, and VGLI is the right answer for anyone who "
-                  "cannot. Separation & Insurance prices the two against your "
-                  "age."),
 
     # -- Your VA benefits --------------------------------------------------
     Question(key="vet_va_rating",
              label="What is your VA disability rating?",
+             # ASKED: a decision the VA made. Nothing on the plan predicts it.
              kind=KIND_CHOICE, path="member", attr="va_rating",
              group=GROUP_VA, group_rank=RANK_VA, order=10, funnels=(FUNNEL_VETERAN,),
              options=VA_RATINGS, format_func=_as_percent,
@@ -192,6 +242,11 @@ QUESTIONS: tuple[Question, ...] = (
                   "percent puts you in VA healthcare Priority Group 1."),
     Question(key="vet_va_monthly",
              label="What does the VA pay you each month?",
+             # ASKED, and it is the one published table this app does NOT
+             # carry: there is no VA compensation rate schedule in the tree,
+             # and the award letter already has dependants and any special
+             # monthly compensation folded into the figure, which a rating
+             # alone never would.
              kind=KIND_MONEY, path="member", attr="va_disability_monthly",
              group=GROUP_VA, group_rank=RANK_VA, order=20, funnels=(FUNNEL_VETERAN,),
              when=has_va_rating, step=50.0, min_value=0.0,
@@ -204,6 +259,8 @@ QUESTIONS: tuple[Question, ...] = (
                   "have."),
     Question(key="vet_va_permanent_total",
              label="Is your rating permanent and total?",
+             # ASKED: whether the VA has stopped scheduling re-examinations is
+             # a finding on the letter, not a consequence of the percentage.
              kind=KIND_TOGGLE, path="member", attr="va_rating_permanent_total",
              group=GROUP_VA, group_rank=RANK_VA, order=30, funnels=(FUNNEL_VETERAN,),
              when=may_be_permanent_and_total,
@@ -215,29 +272,41 @@ QUESTIONS: tuple[Question, ...] = (
                   "they are what opens CHAMPVA to a family that has no "
                   "TRICARE to fall back on."),
 
-    # -- Your civilian life ------------------------------------------------
-    Question(key="vet_civilian_wages",
-             label="What do you earn in your civilian job, per year?",
-             kind=KIND_MONEY, path="member", attr="civilian_wages_annual",
-             group=GROUP_CIVILIAN, group_rank=RANK_CIVILIAN, order=10, funnels=(FUNNEL_VETERAN,),
-             step=1_000.0, min_value=0.0,
-             help="Gross wages, before tax and before anything you divert "
-                  "into a retirement plan. These years and your service years "
-                  "are one earnings record as far as Social Security is "
-                  "concerned, and the civilian years are usually the higher "
-                  "of the two — which is why leaving early costs a pension "
-                  "but not, on its own, a benefit."),
-    Question(key="vet_health_cost",
-             label="What does your health cover cost you in a year?",
-             kind=KIND_MONEY, path="healthcare", attr="out_of_pocket_annual",
-             group=GROUP_CIVILIAN, group_rank=RANK_CIVILIAN, order=20, funnels=(FUNNEL_VETERAN,),
-             step=500.0, min_value=0.0,
-             help="Premiums, deductibles and what you actually spend, for "
-                  "everyone on the plan. Without a military retirement there "
-                  "is no TRICARE at any price, so this is a civilian cost for "
-                  "the rest of your life and the model will not guess it well "
-                  "— left blank it falls back to an estimate of a worker's "
-                  "share of an employer plan. VA care covers you for "
-                  "service-connected conditions. It does not cover your "
-                  "family."),
+    # ======================================================================
+    # The figures we worked out. NOT ASKED — they render on the review card
+    # at the end of intake, seeded with what the app computed.
+    # ======================================================================
+    Question(key="vet_years_served", label="How many years did you serve?",
+             kind=KIND_NUMBER, path="member", attr="years_of_service",
+             group=GROUP_REVIEW, group_rank=RANK_REVIEW, order=10,
+             funnels=(FUNNEL_VETERAN,),
+             min_value=0.0, max_value=40.0, step=0.5, fmt="%.1f",
+             derive=derive_years_served, fills_in=True,
+             derived_from="the two dates on your DD-214",
+             help="Total creditable service, Guard and Reserve time included. "
+                  "Military basic pay has carried Social Security tax since "
+                  "1957, so every one of these years is in your earnings "
+                  "record at its full basic-pay value, and active duty before "
+                  "2002 earned extra credits on top of it. Correct it if your "
+                  "creditable service is not simply the gap between the two "
+                  "dates — a break in service, or Reserve years counted in "
+                  "points."),
+    Question(key="vet_life_cover",
+             label="How much life insurance do you carry now?",
+             kind=KIND_MONEY, path="member", attr="sgli_coverage",
+             group=GROUP_REVIEW, group_rank=RANK_REVIEW, order=20,
+             funnels=(FUNNEL_VETERAN,),
+             step=50_000.0, min_value=0.0,
+             derive=derive_life_cover, fills_in=True,
+             derived_from="SGLI ending at separation, with nothing assumed in "
+                          "its place",
+             help="SGLI ended when you separated, so whatever you hold now is "
+                  "VGLI, a commercial term policy, or nothing — and nothing is "
+                  "what the app assumes until you say otherwise. VGLI is "
+                  "priced in five-year age bands and the premium climbs hard "
+                  "exactly when a fixed income is least able to absorb it; "
+                  "level term is usually a fraction of it for anyone who can "
+                  "pass underwriting, and VGLI is the right answer for anyone "
+                  "who cannot. Separation & Insurance prices the two against "
+                  "your age."),
 )

@@ -3,6 +3,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 import pandas as pd
+from streamlit.errors import StreamlitAPIException
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card, section, metric_row, money, integer, number, toggle, choice, fmt_money, fmt_pct, esc, md_money)
 from engine.tax import domicile as D
@@ -23,39 +24,47 @@ inputs, results = two_pane()
 # ==========================================================================
 with inputs:
     with input_card("Where do you pay tax?"):
-        # Profile asks this as free text and this page as a dropdown, so the
-        # plan may carry "TX", "texas" or a typo. Canonicalise a spelling the
-        # table recognises before the dropdown reads it -- otherwise it cannot
-        # find the value and silently selects the first state in the list.
+        # R3: ONE HOME PER FACT. Your legal residence was asked on Profile as
+        # free text and again here as a dropdown, and a member who changed it
+        # in one place had no way of knowing which copy the next page read.
+        # Intake asks it once. This page READS it — and still canonicalises
+        # the spelling, because free text can carry "TX" or "texas" and
+        # `get_rule()` answers a no-income-tax rule for anything it does not
+        # recognise, which would turn a typo into a tax-free conversion.
+        #
         # Re-spelling the same answer is not an edit, so it does not mark the
-        # plan dirty; choosing a different state below is, and does.
+        # plan dirty. Nothing else here writes the field at all.
         stored = h.state_of_legal_residence
         resolved = RB.resolve_state(stored)
         if RB.state_is_known(resolved):
             h.state_of_legal_residence = resolved
         elif stored:
             st.warning(esc(f"Your plan says “{stored}” is your legal residence, "
-                           f"which is not a state this app knows. Choose one "
-                           f"below — it replaces what Profile has."), icon="⚠️")
+                           f"which is not a state this app knows. Correct it on "
+                           f"Intake — until then this page compares against "
+                           f"nothing."), icon="⚠️")
         else:
             st.warning("Your plan does not say where your legal residence is. "
-                       "Choose it below.", icon="⚠️")
-        # Through choice(), not a bare assignment: this field moves five-figure
-        # sums, and writing it directly left the plan looking saved and every
-        # cached result stale, because nothing called mark_dirty() or
-        # invalidate().
-        slr = choice("Which state is your legal residence?", h,
-                     "state_of_legal_residence", D.STATE_NAMES, key=wkey("slr2"))
-        # Compare against where you are actually stationed. Texas is only
-        # the fallback for a blank or unrecognised duty state.
+                       "Intake asks for it.", icon="⚠️")
+        slr = h.state_of_legal_residence
+        st.markdown(f"**Your legal residence** — {esc(slr or 'not set')}")
+        try:
+            st.page_link("pages/01_Intake.py",
+                         label="Change it on Intake", icon="📝")
+        except StreamlitAPIException:
+            st.caption("📝 Change it on Intake.")
+        # A page-local what-if, and the only widget on this card: a state to
+        # compare against. It is not your residence and nothing here writes it.
         duty = (h.current_state or "").strip().lower()
         alt_default = next((n for n in D.STATE_NAMES if n.lower() == duty),
                            "Texas")
         alt = st.selectbox("Which state do you want to compare with?", D.STATE_NAMES,
                            index=D.STATE_NAMES.index(alt_default),
                            key=wkey("altstate"),
-                           help="Defaults to the state you live in now, from "
-                                "Profile.")
+                           help="A comparison only — choosing one here does not "
+                                "change your plan. It starts at the state you "
+                                "live in now, which the app works out from your "
+                                "duty ZIP code.")
 
     with input_card("What you earn, and for how long"):
         # Derived, not typed: the Pay page already knows this number.

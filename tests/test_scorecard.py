@@ -220,12 +220,29 @@ def test_dependents_claimed_for_pay_are_not_read_as_legacy_intent():
     Documented decision. `n_dependents` includes a spouse and is a pay and tax
     concept; treating it as legacy intent would score every married member on
     a goal they never stated.
+
+    THROUGH `intake.prepare()`, which is what every page calls. An earlier
+    version of this test evaluated the scorecard directly and so kept passing
+    while a derivation in `engine/funnel.py` wrote `n_dependents` into
+    `estate.n_children` on every render pass — turning this component into a
+    rated C-4 in the running app while the test stayed green. The ruling is
+    about what the user sees, so the test has to walk the path the user walks.
     """
+    from engine import intake
+
     h = retiree()
+    h.has_spouse = True
     h.n_dependents = 4
     h.estate.n_children = 0
     h.estate.target_legacy_per_child = 0.0
+
+    intake.prepare(h)
+    assert h.estate.n_children == 0, "a pay dependant count is not a child count"
     assert SC.evaluate(h).by_key("legacy").status == K.NOT_APPLICABLE
+
+    # And the component still says so on screen, truthfully.
+    detail = SC.evaluate(h).by_key("legacy").detail
+    assert "dependants you claim for pay" in detail
 
 
 def test_survivor_does_not_apply_with_nobody_to_leave_an_income_to():

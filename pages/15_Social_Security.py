@@ -4,6 +4,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import streamlit as st
 import pandas as pd
 import altair as alt
+from streamlit.errors import StreamlitAPIException
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, money, integer, toggle, fmt_money,
@@ -99,11 +100,27 @@ with inputs:
                  "Security averages your highest 35 years, so a 20-year career "
                  "alone leaves 15 zeros in the average — civilian years replace "
                  "them one for one.")
-        money("What will you earn in civilian wages, per year?", m,
-              "civilian_wages_annual", key=wkey("ss_civwage"), step=1000.0,
-              help="Today's dollars. This is the same figure as on the Profile "
-                   "page. Zero here makes the civilian years above count as "
-                   "zeros, which is what drags the estimate down.")
+        # R3: ONE HOME PER FACT. This page used to write
+        # `civilian_wages_annual` too, and it meant something different by it
+        # -- "what will you earn AFTER you separate" against Profile's "what
+        # you earn now". One field, two facts, and the damage ran past this
+        # page: `7_Deployment` hands the same field to
+        # `tsp.plan_contributions(prior_year_wages=...)`, where it decides
+        # whether catch-up contributions have to be Roth. So the figure is
+        # asked once, on Intake, and read here.
+        st.markdown(f"**Civilian wages** — {md_money(m.civilian_wages_annual)} "
+                    f"a year")
+        if m.is_serving and m.civilian_wages_annual <= 0:
+            st.caption("You are still serving, so the app has no civilian wage "
+                       "to work with and counts the years above at zero. That "
+                       "makes this estimate deliberately conservative — the "
+                       "real figure lands on the plan once you are Guard, "
+                       "Reserve or out, and Intake asks for it then.")
+        try:
+            st.page_link("pages/01_Intake.py",
+                         label="Change this on Intake", icon="📝")
+        except StreamlitAPIException:
+            st.caption("📝 Change this on Intake.")
 
     with input_card("Your other income in retirement"):
         other_income = st.number_input(

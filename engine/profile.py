@@ -212,6 +212,21 @@ class ServiceMember:
     # lump sum for the year. Taxable unless paid in a combat zone.
     bonus_annual_taxable: float = 0.0
 
+    # The two figures on the LES that no table can produce. The app can
+    # compute what a member of this grade, at this longevity, at this ZIP
+    # SHOULD be paid; it cannot see a deduction, an allotment or a
+    # garnishment, and any of those move what actually arrives. So intake
+    # shows its own arithmetic and asks the member to confirm these two
+    # against the LES, where they are printed.
+    #
+    # 0.0 means NOT CONFIRMED, and the computed figure stands. A confirmed
+    # figure wins, which is the same rule `taxable.resolve_basic_monthly()`
+    # already applies to basic pay. Read through
+    # `engine/intake/pay_check.py::resolve_gross_monthly` and
+    # `resolve_net_monthly`, never raw.
+    gross_pay_monthly_confirmed: float = 0.0
+    net_pay_monthly_confirmed: float = 0.0
+
     # Deployment
     is_deployed: bool = False
     months_deployed_this_year: int = 0
