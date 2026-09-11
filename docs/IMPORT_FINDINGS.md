@@ -214,3 +214,195 @@ correctness.** Every future change here should assume the parse is wrong
 until a cross-check says otherwise, and should prefer refusing to
 guessing — a missing figure is an inconvenience, a wrong one in the
 pre-tax bucket is a wrong answer about the whole plan.
+
+---
+
+# Latent bugs, independent of PDF import
+
+Found while diagnosing the above, but **none of these needs a document to
+bite.** They are ordinary defects in code that ships today. Recorded
+separately because they should be judged on their own merits, not bundled
+with the deprioritised import work.
+
+Ordered by how much damage each does.
+
+## 1. Years of service can be read wrong, at HIGH confidence, and preselected
+
+`engine/ingest/les.py::_read_yos` searches the sliced `YRS SVC` cell with
+an unanchored `\d{1,2}(?:\.\d)?` and no digit-boundary guard. `PAY DATE`
+and `ETS` are both YYMMDD and both sit beside `YRS SVC` on the form, so a
+slice that picks up an adjacent date matches its leading two digits:
+`200612` yields **20 years**.
+
+Every guard in the module is defeated by a value that is wrong but
+ordinary. Twenty is inside `RANGE_YOS`, so bounds pass. The column path
+returns HIGH, so **the box is ticked by default**.
+`cross_check_grade_and_pay` may not fire, because twenty years against a
+mid-career grade is entirely plausible.
+
+Years of service drives basic pay, the retirement multiplier, the
+twenty-year cliff and the Social Security earnings history. The fix is
+small: forbid the match being embedded in a longer digit run, and prefer
+requiring it to be the whole cell.
+
+## 2. A combined statement containing a credit card returns zero assets
+
+`engine/ingest/statements.py` computes `doc_is_card` from a regex over the
+**whole document** (`minimum payment due|payment due date|credit limit|
+available credit`), and the section loop then rejects **every** section
+when it is true.
+
+Reproduced on invented text: a statement with a checking account and a
+Visa below it returns **no accounts and two rejections**, the checking
+balance rejected as "money owed". Combined checking-savings-card
+statements are routine at USAA and Navy Federal.
+
+The gate is also inconsistent — the `_summary_table` path ignores
+`doc_is_card` entirely, so the same document read via a summary table
+*does* return assets. A document-level flag should drive a warning;
+rejection belongs at section level, which already works correctly.
+
+## 3. The page can apply a value to a mismatched target
+
+The candidate row lets the user pick any figure from `all_values()` — the
+best reading plus every alternate — while the target selectbox stays
+bound to the *candidate's* target. After a bad merge the alternates
+belong to a different account with a different tax treatment, so choosing
+the Roth figure applies it to the taxable-brokerage field.
+
+The value and the target come from different accounts by design.
+Alternates need to carry their own target, or changing the figure must
+reset the target.
+
+## 4. `exclude` patterns are matched against the whole physical line
+
+`_PERIOD_NOISE` contains a bare `\bTOTAL\b`. On any multi-column layout —
+the three-column LES as much as the two-pane RAS — the word `TOTAL`
+appearing anywhere on a row suppresses **every** item on that row, and
+each field is then reported as "not found".
+
+It fails safe, so it under-reads rather than mis-reads, but it is a large
+part of why a real document comes back emptier than it should. Excludes
+belong on the item, not the row.
+
+## 5. `detect_institution` resolves ties by list order, not document position
+
+It scans a window, then iterates `INSTITUTIONS` **in list order** and
+returns the first pattern matching anywhere in it. Position in the
+document is irrelevant, so the list order is an undeclared priority.
+
+This alone explains the two misreported statements — no sponsor reasoning
+needed. Custodian boilerplate ("Brokerage services provided by X",
+"Securities offered through X", "clearing through X") is compliance
+language with limited phrasings and deserves near-certain weight;
+position should be the tiebreak.
+
+## 6. `_money_tokens` has two parsing faults
+
+**It cannot parse a leading-dot amount.** The regex requires a leading
+digit, so `.00` matches as `00`. The value is right by accident but the
+token's start offset lands one character late, which corrupts every
+`label = segment[:tok.start]`. It also makes `.00` indistinguishable from
+a real `0.00` — and that is the mechanism by which the whole SBP section
+came back empty, because `_read_sbp` does `if premium <= 0: continue` and
+walked past the election flag as well as the cost.
+
+**It treats any digit run as money.** A six-digit `PAY DATE`, a five-digit
+ZIP, a four-digit year and a three-digit exemption count are all
+"money". `_scan_rule` is incidentally protected because it takes the
+first token *after* a matched label; `_entitlement_rows` is not, so a
+remarks line carrying a date or a ZIP can enter the special-pay sum.
+`_NOT_SPECIAL_PAY` is a blocklist of *labels* and cannot catch this by
+construction.
+
+## 7. `detect_statement_date` requires the label on the same line
+
+`Statement Period August 1, 2026 - August 31, 2026` resolves; the same
+content split across two lines returns empty. A period printed below its
+label is an extremely common layout. Separately, `_DATE_CONTEXT_RX`
+includes a bare `ending`, which matches `Ending Balance`, so a date on a
+balance line can be adopted as the statement date.
+
+## 8. A label followed by two unequal amounts takes the first, unhedged
+
+`Ending Account Value $100.00 $900.00` yields `100.00` at 0.92
+confidence. On the statements tested the two columns happened to be
+equal, so it read correctly **by luck**. A statement whose columns are
+prior-period / this-period would silently import the prior period at high
+confidence.
+
+The summary-table path reasons carefully about which column is the ending
+one; the label-and-values path does not reason about columns at all.
+
+## 9. Two small ones
+
+`_is_heading` excludes any line containing `your`, so `Your Portfolio` is
+rejected; `Your Account Value` survives only incidentally because
+`account` short-circuits first. Statements address the reader constantly.
+
+`_pretty_markers` strips `\b` and `\s+` but leaves quantifiers, so the
+recognised-markers caption prints `SBP COSTS?` — the trailing `?` is the
+optional-`S` quantifier, not punctuation. Cosmetic, but it is the one
+place the page shows parser internals to a user being asked to trust the
+parser's judgement.
+
+---
+
+# If this is picked up again
+
+Two design conclusions were reached before the work stopped. Both are
+worth more than the code that would have implemented them.
+
+## Tax treatment is a second axis, not a flavour of account kind
+
+The statement parser has one axis, `account_kind` (checking / savings /
+brokerage). That answers "what sort of product is this", which is not
+what the plan needs. The plan needs **taxable, pre-tax, or Roth** — and
+the two are orthogonal, because a brokerage account can be any of the
+three.
+
+Precedence that was settled on: liability first and unconditionally; then
+*is this a retirement wrapper at all* (`BROKERAGELINK`, `RSP`,
+`NON-PROTOTYPE`, `FOR THE BENEFIT OF`, `FMTC - TRUSTEE -`, `401(K)`,
+`TSP`, `IRA`, `ROLLOVER`); then `ROTH` as a **modifier** on that wrapper,
+never as a standalone classifier — the current code tests a bare
+`\broth\b` first, which is why the word wins wherever it lands; then
+taxable markers (`TOD`, `INDIVIDUAL`, `JOINT`); then non-retirement
+tax-advantaged (`529`, `HSA`, `UTMA`).
+
+Identity for merging: **account number, else heading text, else tax
+classification.** Two candidates pointing at different tax buckets are by
+construction not the same account, and `same_kind_unnumbered` — which
+asserts identity from the *absence* of evidence — should be deleted.
+
+## The VA compensation figure cannot be derived from a RAS
+
+Under concurrent receipt the arithmetic is
+**CRDP ≤ waiver ≤ VA compensation**. CRDP is capped at the longevity
+portion of retired pay; the waiver equals VA compensation limited by the
+retired pay available to waive.
+
+Equality holds for an ordinary 20-year length-of-service retiree, and in
+that case the CRDP figure *is* the VA figure. But a Chapter 61 disability
+retiree, anyone mid-phase-in, and anyone whose VA compensation exceeds
+their gross retired pay all break it — and **the RAS prints nothing that
+lets the parser tell which case it is in.** It does not print the
+retirement basis or the longevity portion, and when CRDP is in force it
+prints no waiver line to compare against.
+
+So the CRDP amount honestly supports exactly two things: that concurrent
+receipt is in force, and that VA compensation is **at least** that much.
+It should be emitted with an empty `field` so it is structurally incapable
+of being written anywhere, and the missing-VA message should say the
+specific truth — *a concurrent-receipt statement carries no VA WAIVER
+line, so this figure is not on the document; take it from the award
+letter* — because "not found" and "not printed" are different facts.
+
+`sbp_base_amount_monthly` should be added after all. The contract's
+objection is explicitly conditional — "a field that exists and changes
+nothing is worse than no field" — and names its own two-line remedy;
+reading the RAS supplies the value and wiring `roth_bridge.py` supplies
+the effect, so both halves land together and the objection dissolves.
+Store the paid-up clock as a **count** of months, not a boolean: the
+count is what the statement prints, so it is what a user can check
+against the paper.
