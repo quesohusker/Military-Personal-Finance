@@ -192,6 +192,64 @@ keeps backwards compatibility exercised.
 
 ---
 
+## 4. The funnel front door — DONE (`a585a76`)
+
+Built by four agents against a contract written first, then reviewed and
+approved by the agent that wrote the contract before anything was
+committed.
+
+- `engine/funnel.py` + `docs/FUNNEL_CONTRACT.md` — the funnel model, the
+  `Question` schema, and the prescriptive contract everything compiles
+  against.
+- `engine/intake/serving.py` · `veteran.py` · `retiree.py` — 59
+  questions, none duplicating the common set.
+- `pages/00_Start.py` — the front door. One question, three cards
+  rendered from `FUNNEL_SPECS`.
+- `pages/01_Intake.py` — the renderer. **No funnel name, no key prefix,
+  no branch in the file.** Adding a funnel is a spec and a question
+  module, not a page.
+
+**The funnel feeds the 30+ existing status gates rather than replacing
+them.** `set_funnel()` moves `member.component` underneath them; none
+were rewritten. It is not a permissions system — all 23 pages stay
+reachable from every funnel.
+
+### Three defects caught in review, before the commit
+
+1. A `help=` string carried a `$` pair. Help text cannot be escaped at
+   render time, so `validate()` now rejects the pattern.
+2. A GI Bill question wrote "children who could use the benefit" into the
+   field the estate planner reads as "children" — four children, two over
+   26, would have silently halved the gifting plan. That is the §4a
+   one-field-two-meanings defect, reintroduced by the thing built to end
+   it.
+3. Card order was smuggled through card titles; all three modules gamed
+   alphabetical sorting and one only worked because uppercase `V` sorts
+   below lowercase `c`. Questions now carry an explicit `group_rank`.
+
+### Deliberately not stored
+
+`sbp_base_amount_monthly` — the projection already treats 0 as full
+retired pay, and `roth_bridge.py` never passes a base through, so the
+field would collect an answer that changes no number and invite a
+reduced-base retiree to trust a figure it never reaches. GI Bill months
+remaining, a civilian employer plan and promotion expectations have no
+field on `ServiceMember`, and none was invented.
+
+**Verified:** 1178 tests (up from 958); all 25 pages driven in headless
+Chromium against both sample plans, no traceback and no `.katex` node;
+all three funnels driven from the landing page through to a rendered
+intake (29 / 23 / 23 widgets).
+
+### Next, per ARCHITECTURE.md §7
+
+Step 1 is **not** finished: the Career timeline is still unpersisted
+(`st.session_state` only) and blocks extending the spine over the serving
+years. Then `engine/scorecard/` over the existing retiree projection —
+six of eight components work immediately.
+
+---
+
 ## Next up: the retire-in-grade rule — BLOCKED on a source
 
 An officer must serve a minimum time in grade to retire *at* that grade.
