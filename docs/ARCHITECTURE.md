@@ -338,6 +338,69 @@ The two importers (`Import Pay Statement`, `Import Accounts`) become the
 LES or RAS and the funnel arrives pre-filled, with every figure showing
 the raw line it came from. That is what they were built for.
 
+## 5a. Binding requirements on intake
+
+Stated by Paul as non-negotiable. They constrain every question that is
+ever added, so they sit here rather than in a commit message.
+
+### R1. Ask the minimum number of questions needed, and no more
+
+A question earns its place only if the answer **cannot be derived**. The
+test is not "is this useful?" — it is "can the app work it out?"
+
+Most of what a member would otherwise type is already computable from
+three facts:
+
+| Derived from | What it gives | Module |
+|---|---|---|
+| grade + years of service | basic pay | `engine/pay/basepay.py` |
+| duty ZIP + grade + dependants | BAH | `engine/pay/bah.py` |
+| grade | BAS | `engine/pay/bas.py` |
+| DIEMS date | retirement system, TSP match, TRICARE group | `engine/profile.py`, `benefits/healthcare.py` |
+| grade + YOS + time in grade | the Social Security earnings history | `income/social_security.py` |
+
+`engine/pay/taxable.py::resolve_basic_monthly()` already states the
+convention: **the LES figure wins, the published table is the fallback.**
+So the question is never "what is your basic pay?" — it is an override,
+asked only when the member wants to correct what the table produced, and
+it should not be in the main flow at all.
+
+### R2. An upload is a first-class way to answer, everywhere
+
+Every place that asks for figures must offer to read them off a document
+instead: an LES or RAS, a bank or brokerage statement, **or a screenshot
+of one**. ARCHITECTURE §5 already said the importers should be the fast
+path into intake rather than separate destinations; R2 makes that binding
+and extends it to images.
+
+The existing importers propose and never apply — every figure shows the
+raw line it came from and a confidence, and the user ticks what to
+accept. That contract holds for images too, and matters more there,
+because OCR is less reliable than text extraction.
+
+**This adds a dependency.** The app today makes no network calls at all
+and reads PDFs with `pypdf`; a screenshot needs OCR, and there is none in
+the tree. A cloud vision API is the wrong answer — it would send a
+member's pay statement to a third party and break the privacy property
+the app currently advertises on its own front page. Tesseract, via
+`pytesseract` plus a `packages.txt` entry for Community Cloud, keeps
+everything local. Record the added dependency plainly wherever it lands.
+
+### R3. A fact is entered once and populates everywhere
+
+No field is asked on two pages. Where a page needs a figure another page
+already holds, it reads it — and where it can be derived, it derives it.
+
+This is the §4a defect stated as a rule. Today `in_combat_zone` is asked
+on Profile and again on Deployment, `retired_pay_monthly` on Profile and
+again on Survivor Benefits, `civilian_wages_annual` on Profile and again
+on Social Security. Worse, three pages — Pension, Medical Separation,
+Taxes — ask for figures they then throw away, seeding page-local widgets
+from the profile and writing nothing back, so a member who corrects a
+number there has corrected nothing.
+
+R3 is the standing answer: **one home per fact, read everywhere else.**
+
 ## 6. What the 23 pages become
 
 **Nothing is deleted.** Each page becomes the drill-down for a scorecard
