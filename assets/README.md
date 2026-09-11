@@ -3,8 +3,10 @@
 ## `crest.png` — the app's crest, shown on the Start page
 
 **Not in the repo.** Save the artwork here as `crest.png` and the Start page
-picks it up with no code change. Until then the page says the file is missing
-rather than showing a broken image, and everything else on it still works.
+picks it up with no code change. `crest.jpg`, `crest.jpeg`, `crest.webp` and
+`crest.svg` work too — the page takes the first one it finds, so nobody has to
+convert a file just to see it. Until then the page says which names it looked
+for rather than showing a broken image, and everything else on it still works.
 
 - A wide transparent-background PNG works best — the page scales it to the
   column width, so its own margins become the page's spacing.

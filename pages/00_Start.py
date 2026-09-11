@@ -42,10 +42,20 @@ from engine.intake import FUNNEL_SPECS, set_funnel
 INTAKE_PAGE = "pages/01_Intake.py"
 
 # The crest lives beside the app rather than inside the page, so replacing the
-# artwork never means editing Python. A missing file is not an error — the page
-# stays usable — but it says so, because a silent absence reads as a broken
-# image to whoever clones this next.
-CREST = Path(__file__).resolve().parent.parent / "assets" / "crest.png"
+# artwork never means editing Python. Any common image format will do: whoever
+# drops the file in should not have to convert it first, or discover by way of
+# a blank page that the extension was the problem.
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
+CREST_FORMATS = ("png", "jpg", "jpeg", "webp", "svg")
+
+
+def _crest() -> Path | None:
+    """The first `assets/crest.*` there is, or None. Missing is not an error."""
+    for ext in CREST_FORMATS:
+        candidate = ASSETS / f"crest.{ext}"
+        if candidate.exists():
+            return candidate
+    return None
 
 # Short labels. The funnel specs carry fuller names for the rest of the app;
 # on a door, two or three words each is the whole question.
@@ -83,10 +93,14 @@ with middle:
     # reader and for the browser's outline.
     st.title("Soup Sandwich")
 
-    if CREST.exists():
-        st.image(str(CREST), use_container_width=True)
+    crest = _crest()
+    if crest is not None:
+        st.image(str(crest), use_container_width=True)
     else:
-        st.caption("Crest not found — save it as `assets/crest.png`.")
+        # Say where it goes rather than showing nothing: a silent absence
+        # reads as a broken image to whoever clones this next.
+        st.caption("Crest not found — save it as `assets/crest.png` "
+                   "(`.jpg`, `.jpeg`, `.webp` and `.svg` also work).")
 
     st.write("")
 
