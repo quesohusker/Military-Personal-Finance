@@ -95,7 +95,14 @@ with middle:
 
     crest = _crest()
     if crest is not None:
-        st.image(str(crest), use_container_width=True)
+        # At the column's full width the crest is a thousand pixels tall and
+        # pushes the three buttons off the first screen, which defeats the
+        # point of a door. Half width keeps the whole choice in one view.
+        # Nested columns rather than `width=`, because st.image left-aligns
+        # and the page's one rule is that everything is centred.
+        pad_l, art, pad_r = st.columns([1, 2, 1])
+        with art:
+            st.image(str(crest), use_container_width=True)
     else:
         # Say where it goes rather than showing nothing: a silent absence
         # reads as a broken image to whoever clones this next.
