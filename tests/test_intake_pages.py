@@ -68,11 +68,18 @@ def test_intake_renders_every_question_in_every_funnel(funnel):
 
 @pytest.mark.parametrize("funnel", list(FUNNELS))
 def test_the_start_page_renders_for_a_plan_that_has_answered(funnel):
+    """
+    The door carries no prose, so the only signal that a plan has already
+    answered is which button is marked. Exactly one must be.
+    """
     h = Household()
     set_funnel(h, funnel)
     at = loaded(h)(START)
     assert not at.exception, at.exception
-    assert at.success, "an answered plan should be shown what it picked"
+
+    marked = {b.key for b in at.button if b.proto.type == "primary"}
+    assert marked == {f"door_{funnel}__v0"}, \
+        f"an answered plan should mark what it picked, got {marked}"
 
 
 def test_intake_sends_an_unasked_plan_to_the_front_door_instead_of_guessing():
@@ -87,7 +94,7 @@ def test_the_start_page_offers_all_three_funnels_before_it_is_answered():
     assert not at.exception, at.exception
     keys = {b.key for b in at.button}
     for funnel in FUNNELS:
-        assert f"pick_{funnel}__v0" in keys, funnel
+        assert f"door_{funnel}__v0" in keys, funnel
 
 
 # ==========================================================================
@@ -98,7 +105,7 @@ def test_the_start_page_offers_all_three_funnels_before_it_is_answered():
 def test_choosing_a_funnel_records_it_and_marks_the_plan_dirty(funnel):
     h = Household()
     at = loaded(h)(START)
-    at.button(key=f"pick_{funnel}__v0").click().run()
+    at.button(key=f"door_{funnel}__v0").click().run()
 
     after = at.session_state["household"]
     assert after.funnel == funnel
@@ -132,3 +139,42 @@ def test_every_page_is_still_registered_in_the_router():
     on_disk = {f"pages/{p.name}" for p in (ROOT / "pages").glob("*.py")}
     assert on_disk - registered == set(), "a page exists but is unreachable"
     assert registered - on_disk == set(), "the router points at a missing page"
+
+
+# ==========================================================================
+# The door stays a door
+#
+# The front door is four buttons and a crest. Every page in this app has a
+# subtitle and help text and findings; this one has none on purpose, because
+# the three labels are the question and a door you have to read is a bad
+# door. Prose creeps back in one well-meant sentence at a time, so the
+# absence is pinned here rather than left to discipline.
+# ==========================================================================
+
+def test_the_front_door_carries_nothing_but_the_choice():
+    at = loaded(Household())(START)
+    assert not at.exception, at.exception
+
+    keys = [b.key for b in at.button]
+    assert keys == ["door_serving__v0", "door_veteran__v0",
+                    "door_retiree__v0", "door_open__v0"], keys
+
+    # No banners, no expanders, no findings, no metrics, no second heading.
+    assert not at.info, "the door explains nothing"
+    assert not at.success
+    assert not at.error
+    assert not at.metric
+    assert not at.expander
+    assert not at.header
+    assert not at.subheader
+    assert not at.selectbox
+    assert not at.number_input
+    assert not at.toggle
+
+
+def test_the_front_door_offers_exactly_one_way_back_into_a_saved_plan():
+    at = loaded(Household())(START)
+    assert len(at.file_uploader) == 1
+    # Selecting a file must not load it -- there is no way back from the
+    # wrong one, so the button stays disabled until something is chosen.
+    assert at.button(key="door_open__v0").disabled is True
