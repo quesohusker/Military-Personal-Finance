@@ -368,23 +368,38 @@ it should not be in the main flow at all.
 ### R2. An upload is a first-class way to answer, everywhere
 
 Every place that asks for figures must offer to read them off a document
-instead: an LES or RAS, a bank or brokerage statement, **or a screenshot
-of one**. ARCHITECTURE §5 already said the importers should be the fast
-path into intake rather than separate destinations; R2 makes that binding
-and extends it to images.
+instead: an LES or RAS, or a bank or brokerage statement. ARCHITECTURE §5
+already said the importers should be the fast path into intake rather
+than separate destinations; R2 makes that binding.
 
 The existing importers propose and never apply — every figure shows the
 raw line it came from and a confidence, and the user ticks what to
-accept. That contract holds for images too, and matters more there,
-because OCR is less reliable than text extraction.
+accept. That contract holds.
 
-**This adds a dependency.** The app today makes no network calls at all
-and reads PDFs with `pypdf`; a screenshot needs OCR, and there is none in
-the tree. A cloud vision API is the wrong answer — it would send a
-member's pay statement to a third party and break the privacy property
-the app currently advertises on its own front page. Tesseract, via
-`pytesseract` plus a `packages.txt` entry for Community Cloud, keeps
-everything local. Record the added dependency plainly wherever it lands.
+**PDF, CSV and pasted text only.** A screenshot was in the original
+statement of this requirement and was **withdrawn** — recorded here
+because it will be proposed again, and because the reasoning outlasts the
+decision.
+
+An image needs OCR, and there is none in this tree: `pypdf` reads a PDF's
+text layer, which is a different thing entirely. That means a new
+dependency, and the only two shapes it can take are:
+
+- **A cloud vision API** — wrong, and would stay wrong if asked for
+  again. It sends a member's pay statement to a third party and breaks
+  the privacy property the app advertises on its own front page. Do not
+  do this.
+- **Tesseract**, via `pytesseract` and a `packages.txt` entry for
+  Community Cloud, with `brew install tesseract` on a Mac. Local, so it
+  keeps the privacy property — but it adds a system package to the
+  deploy, and OCR misreads digits (`0`/`O`, `1`/`l`, `5`/`S`, `8`/`B`) in
+  exactly the fields where a wrong digit does the most damage.
+
+Neither earns its cost against a `myPay` PDF the member can already
+download. If the screenshot path is ever revived, it is tesseract, it is
+behind a seam that degrades honestly when the binary is absent, and OCR
+findings carry their own lower confidence rather than inheriting the text
+path's.
 
 ### R3. A fact is entered once and populates everywhere
 
