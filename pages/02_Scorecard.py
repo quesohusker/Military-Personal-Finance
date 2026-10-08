@@ -35,7 +35,7 @@ import streamlit as st
 from streamlit.errors import StreamlitAPIException
 
 from ui.panel import (wkey, get_household, page_header, section, metric_row,
-                      esc, fmt_pct, render_findings)
+                      esc, fmt_pct, render_findings, end_page)
 from engine import scorecard as SC
 from engine.scorecard import bands as B
 from engine.intake import prepare
@@ -100,8 +100,7 @@ if SC.needs_front_door(h):
     if reading:
         st.caption(esc(f"From what this plan already carries it reads as "
                        f"{reading}, but that is a reading, not your answer."))
-    st.stop()
-
+    end_page()   # not st.stop(): see ui.panel.end_page
 # --------------------------------------------------------------------------
 # The expensive part, and only on request.
 # --------------------------------------------------------------------------

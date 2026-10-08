@@ -33,7 +33,7 @@ from streamlit.errors import StreamlitAPIException
 
 import ui.panel as panel
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
-                      esc, md_money, render_findings)
+                      esc, md_money, render_findings, end_page)
 from engine.intake import (KINDS, KIND_MONEY, KIND_PCT, KIND_TOGGLE, prepare,
                            questions_to_ask, figures_to_check, facts_settled,
                            review_statement, review_findings,
@@ -153,8 +153,7 @@ if not is_chosen(h.funnel):
                "decides which of these questions are yours, so intake does not "
                "open until it is answered.", icon="🎖️")
     _link(START_PAGE, "Answer it on the Start page", "🎖️")
-    st.stop()
-
+    end_page()   # not st.stop(): see ui.panel.end_page
 funnel = spec(funnel_of(h))
 questions = questions_to_ask(h)
 figures = figures_to_check(h)

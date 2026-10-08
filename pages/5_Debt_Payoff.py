@@ -6,7 +6,7 @@ import pandas as pd
 
 from ui.panel import (wkey, get_household, page_header, two_pane, input_card,
                       section, metric_row, fmt_money, esc, md_money,
-                      render_findings)
+                      render_findings, end_page)
 from engine.debt import payoff as P
 from engine.profile import SERVING
 
@@ -39,8 +39,7 @@ if h.debts:
 if not h.debts:
     st.info("No debts recorded. Add them on the **Accounts** page, "
             "under Your debts.", icon="ℹ️")
-    st.stop()
-
+    end_page()   # not st.stop(): see ui.panel.end_page
 inputs, results = two_pane()
 
 # ==========================================================================

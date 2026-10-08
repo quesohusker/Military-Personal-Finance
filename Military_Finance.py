@@ -20,7 +20,8 @@ import streamlit as st
 st.set_page_config(page_title="Military Personal Finance", page_icon="🎖️",
                    layout="wide", initial_sidebar_state="expanded")
 
-from ui.panel import inject_css, render_sidebar  # noqa: E402
+from ui.panel import inject_css, render_sidebar, PageDone, routed_page  # noqa: E402
+from ui.plan_file import render_plan_toolbar  # noqa: E402
 
 inject_css()
 render_sidebar()
@@ -82,6 +83,23 @@ MENU = {
     ],
 }
 
+# Save / Load file sit at the top of every page. The slot is claimed here so
+# it renders above the page, but filled AFTER the page has run, because the
+# page is where an edit lands in the plan: drawn first, Save would write the
+# plan as it was one edit ago, and the unsaved dot would lag one edit behind.
+# `finally` keeps the row on a page that raises. It cannot rescue st.stop(),
+# which registers a stop request on the runner and drops everything drawn
+# after it -- so a page that ends early calls ui.panel.end_page() instead,
+# and tests/test_page_contract.py enforces that.
+toolbar = st.container()
+
 # expanded=True: past ten pages Streamlit folds the tail of the menu behind a
 # "View N more" button, and the group it hides is the one retirees need.
-st.navigation(MENU, expanded=True).run()
+try:
+    with routed_page():
+        st.navigation(MENU, expanded=True).run()
+except PageDone:
+    pass                     # a page ended early via end_page(); not an error
+finally:
+    with toolbar:
+        render_plan_toolbar()

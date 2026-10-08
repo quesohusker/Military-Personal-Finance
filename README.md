@@ -69,8 +69,10 @@ question.
 | | Healthcare | TRICARE now, Medicare Part B at 65, and IRMAA against your conversions |
 | | Survivor Benefits | SBP priced honestly, CRDP vs CRSC after tax |
 
-Plan controls live in the sidebar: name it, download it, or open a file you
-saved earlier. Pin the menu with the 📌 toggle to stop it collapsing.
+**Save** and **Load file** sit at the top of every page and behave like any
+desktop app: Save opens the system's Save window (Chrome and Edge; Safari
+and Firefox download instead), Load file opens the system's Open window. A
+dot beside them marks unsaved changes. Pin the menu with the 📌 toggle.
 
 ## Sample plans
 

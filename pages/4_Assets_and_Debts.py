@@ -60,7 +60,9 @@ edited = st.data_editor(
                  "for the SCRA 6% cap."),
     })
 
-if st.button("Save these debts", type="primary", key=wkey("savedebts")):
+# "Apply", not "Save": Save is the toolbar button that writes a file. This
+# only commits the table edits into the plan in memory.
+if st.button("Apply these debts", type="primary", key=wkey("savedebts")):
     new = []
     for _, row in edited.iterrows():
         name = str(row.get("Name") or "").strip()
@@ -74,7 +76,8 @@ if st.button("Save these debts", type="primary", key=wkey("savedebts")):
                           incurred_before_service=bool(row.get("Pre-service"))))
     h.debts = new
     mark_dirty(); invalidate()
-    st.success(f"Saved {len(new)} debt(s).")
+    st.success(f"Applied {len(new)} debt(s) to your plan. Use Save at the top "
+               f"of the page to keep them in a file.")
     st.rerun()
 
 

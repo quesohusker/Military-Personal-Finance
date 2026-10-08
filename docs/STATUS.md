@@ -23,6 +23,35 @@ Chromium against both sample plans after each change — no traceback, no
 
 ---
 
+## Save and Load file — DONE, from a parallel session
+
+Paul found the plan-loading area confusing, and asked for a Save button that
+opens a familiar Save window and a Load file button that opens an Open
+window. That was built in the other session while this one was working, then
+rebased onto everything here. Three things in it affect work on this branch:
+
+- **The sidebar plan controls are gone.** Name box, download button, "Open a
+  plan" expander, the second "Open this file" button and the slots "saved on
+  this machine" are all removed. Two buttons now sit at the top of every
+  page: `ui/plan_file.py`, an `st.components.v2` component drawn by the
+  router. Save uses the File System Access API (a real Save window in
+  Chrome and Edge, a plain download in Safari and Firefox); Load file is the
+  system Open window, and choosing a file is the confirmation.
+- **The router draws that row AFTER the page runs** — drawn first, Save would
+  write the plan as it was one edit ago. So **a page must never call
+  `st.stop()`**: it registers a stop request on the runner and everything
+  drawn after it is dropped, buttons included. Call `ui.panel.end_page()`
+  instead. Under the router it raises an exception the router catches;
+  rendered standalone, as the AppTest suites do, it is plain `st.stop()`.
+  `tests/test_page_contract.py` fails on any `st.stop()` in `pages/`.
+- **`01_Intake.py`, `02_Scorecard.py` and `5_Debt_Payoff.py` each changed by
+  one line**: `st.stop()` became `end_page()`. Nothing else in them moved.
+
+Also: the debt editor's "Save these debts" is now "Apply these debts", so
+that "Save" means writing a file everywhere in the app.
+
+---
+
 ## The one thing waiting on Paul
 
 **Does `General` holding 13 of the 23 pages read as a junk drawer?**

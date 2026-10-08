@@ -7,6 +7,9 @@ one page is immediately visible on every other.
 """
 
 from __future__ import annotations
+import contextlib
+import threading
+
 import streamlit as st
 
 from engine.profile import Household
@@ -68,16 +71,55 @@ def invalidate() -> None:
 # --------------------------------------------------------------------------
 
 PIN_KEY = "mpf_sidebar_pinned"
-PENDING_UPLOAD = "mpf_pending_upload"
+
+
+class PageDone(Exception):
+    """Raised by end_page(); the router catches it. See end_page()."""
+
+
+_ROUTER = threading.local()
+
+
+@contextlib.contextmanager
+def routed_page():
+    """
+    The router wraps each page run in this, so end_page() knows someone is
+    there to catch it. Thread-local because Streamlit runs each session's
+    script on its own thread: one user's page must not see another's flag.
+    """
+    _ROUTER.active = True
+    try:
+        yield
+    finally:
+        _ROUTER.active = False
+
+
+def end_page() -> None:
+    """
+    Stop the rest of this page from running. Use this, never st.stop().
+
+    st.stop() registers a stop request on the script runner, after which
+    nothing renders -- including the Save / Load file row, which the router
+    draws only once the page has run (it has to: the page is where an edit
+    lands, so drawing the row first would make Save write the plan as it was
+    one edit ago). Under the router this raises an exception the router
+    catches instead, so the page ends exactly as before and the row still
+    draws. Run standalone -- a page file rendered directly, as the AppTest
+    suites do -- there is no row to protect, so it is plain st.stop().
+    """
+    if getattr(_ROUTER, "active", False):
+        raise PageDone()
+    st.stop()
 
 
 def render_sidebar() -> Household:
     """
-    The plan controls, and the pin.
+    The pin, and the disclaimer.
 
-    These used to sit in a bordered box at the top of every page, which cost
-    roughly a fifth of the first screen on twelve pages. In the sidebar they
-    are visible from everywhere and cost nothing.
+    Save and Load used to live here, below a menu that has grown to 21 pages
+    -- far enough down to need a scroll, and wrapped in a name box, an
+    expander and a confirm button. They are now two buttons at the top of
+    every page (ui/plan_file.py).
     """
     h = get_household()
 
@@ -88,94 +130,11 @@ def render_sidebar() -> Household:
         st.toggle("📌 Keep this menu open", key=PIN_KEY,
                   help="Pin the menu so it stays open while you move between "
                        "pages. Unpin it to reclaim the width.")
-
-        st.divider()
-        st.markdown('<div class="mpf-side-head">Your plan</div>',
-                    unsafe_allow_html=True)
-
-        new_name = st.text_input("Plan name", value=h.profile_name,
-                                 key=wkey("planname_side"),
-                                 label_visibility="collapsed",
-                                 placeholder="Name this plan")
-        if new_name and new_name != h.profile_name:
-            h.profile_name = new_name
-
-        st.download_button("⬇️  Download plan", data=storage.to_download_bytes(h),
-                           file_name=storage.download_filename(h),
-                           mime="application/json", key=wkey("dl_side"),
-                           use_container_width=True)
-
-        with st.expander("📂  Open a plan", expanded=False):
-            _render_open_plan()
-
-        if st.session_state.get(DIRTY_KEY):
-            st.caption("⚠️ Unsaved changes — download before you close the tab.")
-
         st.divider()
         st.caption("An estimator, not advice. Military OneSource gives free "
                    "counselling at 800-342-9647.")
 
     return h
-
-
-def _render_open_plan() -> None:
-    """
-    Pick a file, then click a button. Nothing loads until you say so.
-
-    The uploader used to apply a file the instant it was selected, with no
-    confirmation and no way back if you picked the wrong one.
-    """
-    up = st.file_uploader("Choose a plan file", type=["json"],
-                          key=wkey("ul_side"),
-                          help="A .mpfplan.json file you downloaded earlier.")
-
-    ready = up is not None
-    if ready:
-        st.caption(f"Selected: **{up.name}**")
-    if st.button("Open this file", key=wkey("ulbtn_side"), type="primary",
-                 use_container_width=True, disabled=not ready):
-        try:
-            set_household(storage.from_upload_bytes(up.getvalue()))
-            st.rerun()
-        except (ValueError, UnicodeDecodeError) as e:
-            st.error(f"That file could not be read: {e}")
-
-    slots = storage.list_slots()
-    st.divider()
-    st.caption("**Saved on this machine.** These do not survive a restart on a "
-               "hosted deployment — download the file instead.")
-
-    save_as = st.text_input("Save as", value=get_household().profile_name,
-                            key=wkey("saveas_side"),
-                            label_visibility="collapsed",
-                            placeholder="Save under this name")
-    if st.button("💾  Save to this machine", key=wkey("save_side"),
-                 use_container_width=True):
-        try:
-            p = storage.save_slot(get_household(), save_as
-                                  or get_household().profile_name)
-            st.session_state[DIRTY_KEY] = False
-            st.success(f"Saved {p.name}", icon="✅")
-        except OSError as e:
-            st.error(f"Could not save: {e}")
-
-    if not slots:
-        return
-
-    picked = st.selectbox("Saved plans", [s["name"] for s in slots],
-                          key=wkey("load_side"), label_visibility="collapsed")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Open", key=wkey("loadbtn_side"), use_container_width=True):
-            try:
-                set_household(storage.load_slot(picked))
-                st.rerun()
-            except (OSError, ValueError) as e:
-                st.error(f"Could not open: {e}")
-    with c2:
-        if st.button("Delete", key=wkey("delbtn_side"), use_container_width=True):
-            storage.delete_slot(picked)
-            st.rerun()
 
 
 def render_save_load(page_key: str) -> Household:

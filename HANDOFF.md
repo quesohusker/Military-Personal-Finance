@@ -64,6 +64,12 @@ with results:
   containing a money figure must go through `esc()`. Passing a string to
   `md_money()` crashes the page. This has bitten three times.
 - **No `st.set_page_config` in a page.** The router owns it.
+- **Save and Load file live in `ui/plan_file.py`**, an `st.components.v2` component
+  the router draws at the top of every page, *after* the page has run — drawn
+  first, Save would write the plan as it was one edit ago. Save uses the
+  browser's File System Access API for a real Save window (Chrome/Edge) and
+  falls back to a download. "Save" means *write a file* everywhere in the app;
+  a button that commits edits into the plan says "Apply".
 - Findings are `(severity, headline, detail)` triples — `good` / `warn` /
   `bad` / `info` — rendered by `render_findings()`, ordered by dollars at stake.
 
@@ -109,6 +115,7 @@ behind a "View 3 more" button, and the group it hid was the retiree one.
 | `alt.Axis(format=None)` | Invalid in Altair 6 | `alt.Undefined` |
 | Module edits not reloading | Streamlit does not reliably reload imported modules | restart the server, don't trust a rerun |
 | Browser refresh | Session state dies, loaded plan is gone | expected; tell users to re-upload |
+| `st.stop()` in a page | Registers a stop request on the runner; nothing drawn after it survives, so the page loses its Save / Load row | call `ui.panel.end_page()` instead — same effect on the page, the router catches it; `tests/test_page_contract.py` enforces it |
 
 ## Verification discipline — this is the part that matters
 
